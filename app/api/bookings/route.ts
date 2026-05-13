@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { CreateBookingRequest, Booking } from '@/types/models'
 import { z } from 'zod'
+import { sendBookingConfirmation } from '@/lib/email'
 
 const createBookingSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -255,8 +256,41 @@ export async function POST(request: NextRequest) {
 
     if (createError) throw createError
 
-    // TODO: Send confirmation email via Resend
-    // TODO: Create audit log entry
+    // Send confirmation email (async, don't wait)
+    try {
+      // Get additional details for email
+      const { data: offering } = await client
+        .from('offerings')
+        .select('name')
+        .eq('id', offeringId)
+        .single() as any
+
+      const { data: location } = await client
+        .from('locations')
+        .select('name, address')
+        .eq('id', locationId)
+        .single() as any
+
+      const { data: organization } = await client
+        .from('organizations')
+        .select('name')
+        .eq('id', finalOrganizationId)
+        .single() as any
+
+      await sendBookingConfirmation({
+        customerName,
+        customerEmail,
+        offeringName: offering?.name || 'Service',
+        locationName: location?.name || 'Standort',
+        locationAddress: location?.address || '',
+        startTime,
+        endTime,
+        organizationName: organization?.name || 'Terminbuchung',
+      })
+    } catch (emailError) {
+      console.error('Failed to send confirmation email:', emailError)
+      // Don't fail the booking if email fails
+    }
 
     return NextResponse.json(booking, { status: 201 })
   } catch (error) {
