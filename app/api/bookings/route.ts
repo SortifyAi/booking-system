@@ -9,6 +9,7 @@ const createBookingSchema = z.object({
   organizationId: z.string().uuid().optional(),
   locationId: z.string().uuid(),
   offeringId: z.string().uuid(),
+  resourceId: z.string().uuid().optional(), // Optional: auto-assign if not provided
   customerName: z.string().min(1),
   customerEmail: z.string().email(),
   customerPhone: z.string().optional(),
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
       organizationId,
       locationId,
       offeringId,
+      resourceId: selectedResourceId,
       customerName,
       customerEmail,
       customerPhone,
@@ -123,6 +125,41 @@ export async function POST(request: NextRequest) {
 
     const client = await createClient()
     const user = await getUser()
+
+    // Auto-assign staff if not selected: find staff with fewest bookings at this time
+    let finalResourceId = selectedResourceId
+    if (!finalResourceId) {
+      // Get all staff resources for this location
+      const { data: staffMembers, error: staffError } = await client
+        .from('resources')
+        .select('id, name, type')
+        .eq('location_id', locationId)
+        .eq('type', 'staff')
+        .eq('is_active', true)
+
+      if (!staffError && staffMembers?.length) {
+        // Count bookings for each staff member at the requested time
+        let minBookings = Infinity
+        let bestStaff = null
+
+        for (const staff of staffMembers) {
+          const { data: bookings } = await client
+            .from('bookings')
+            .select('id')
+            .eq('resource_id', staff.id)
+            .in('status', ['pending', 'confirmed'])
+            .or(`and(start_time.lt.${endTime},end_time.gt.${startTime})`)
+
+          const bookingCount = bookings?.length || 0
+          if (bookingCount < minBookings) {
+            minBookings = bookingCount
+            bestStaff = staff.id
+          }
+        }
+
+        finalResourceId = bestStaff
+      }
+    }
 
     let finalOrganizationId = organizationId
     if (!finalOrganizationId) {
@@ -161,15 +198,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check availability (basic check - ensure no overlapping bookings)
-    const { data: conflictingBookings, error: conflictError } = await client
-      .from('bookings')
-      .select('id')
-      .eq('location_id', locationId)
-      .eq('offering_id', offeringId)
-      .in('status', ['pending', 'confirmed'])
-      .or(`and(start_time.lt.${endTime},end_time.gt.${startTime})`)
-      .limit(1)
+    // Check availability (considering staff/resource if assigned)
+    let conflictingBookings
+    if (finalResourceId) {
+      // Check specifically for the selected/assigned staff
+      const { data: conflict, error: conflictError } = await client
+        .from('bookings')
+        .select('id')
+        .eq('resource_id', finalResourceId)
+        .in('status', ['pending', 'confirmed'])
+        .or(`and(start_time.lt.${endTime},end_time.gt.${startTime})`)
+        .limit(1)
+      conflictingBookings = conflict
+      if (conflictError) throw conflictError
+    } else {
+      // No specific staff - just check location-level conflicts
+      const { data: conflict, error: conflictError } = await client
+        .from('bookings')
+        .select('id')
+        .eq('location_id', locationId)
+        .eq('offering_id', offeringId)
+        .in('status', ['pending', 'confirmed'])
+        .or(`and(start_time.lt.${endTime},end_time.gt.${startTime})`)
+        .limit(1)
+      conflictingBookings = conflict
+      if (conflictError) throw conflictError
+    }
 
     if (conflictError) throw conflictError
     if (conflictingBookings?.length) {
@@ -186,6 +240,7 @@ export async function POST(request: NextRequest) {
         organization_id: finalOrganizationId,
         location_id: locationId,
         offering_id: offeringId,
+        resource_id: finalResourceId || null,
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone || null,

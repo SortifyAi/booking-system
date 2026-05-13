@@ -7,15 +7,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/server/db";
 import type { Database } from "@/lib/types/database.types";
+import { mockLocations } from "@/lib/mock-data";
+import { isMockMode } from "@/lib/mock-mode";
 
 /**
  * GET: Retrieve all locations (with optional filtering)
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const orgId = searchParams.get("organization_id");
+    
+    // Return mock data in mock mode
+    if (isMockMode()) {
+      let data = mockLocations;
+      if (orgId) {
+        data = mockLocations.filter(loc => loc.organization_id === orgId);
+      }
+      return NextResponse.json({ data, count: data.length });
+    }
+    
+    const supabase = getSupabaseAdmin();
     const limit = parseInt(searchParams.get("limit") || "10");
     const offset = parseInt(searchParams.get("offset") || "0");
 

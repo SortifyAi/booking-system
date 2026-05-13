@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { z } from 'zod'
+import { mockOfferings } from '@/lib/mock-data'
+import { isMockMode } from '@/lib/mock-mode'
 
 const createOfferingSchema = z.object({
   organizationId: z.string().uuid(),
@@ -21,13 +23,22 @@ const createOfferingSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const locationId = searchParams.get('location_id')
+    
+    // Return mock data in mock mode
+    if (isMockMode()) {
+      let data = mockOfferings;
+      if (locationId) {
+        data = mockOfferings.filter(off => off.location_id === locationId);
+      }
+      return NextResponse.json({ offerings: data });
+    }
+    
     const user = await getUser()
     if (!user) {
       return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 401 })
     }
-
-    const { searchParams } = new URL(request.url)
-    const locationId = searchParams.get('location_id')
 
     const client = await createClient()
 
