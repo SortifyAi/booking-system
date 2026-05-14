@@ -20,6 +20,7 @@ interface Booking {
   service: string;
   status: string;
   location_id: string;
+  staff_id?: string;
 }
 
 interface WeekCalendarProps {
@@ -27,6 +28,7 @@ interface WeekCalendarProps {
   bookings: Booking[];
   startHour?: number;
   endHour?: number;
+  onTimeSlotClick?: (date: Date, hour: number) => void;
 }
 
 const getServiceColor = (service: string) => {
@@ -55,11 +57,18 @@ const getServiceTextColor = (service: string) => {
   }
 };
 
+const staffColors: Record<string, string> = {
+  'staff-anna': '#8B5CF6',
+  'staff-marc': '#3B82F6',
+  'staff-sophie': '#10B981',
+};
+
 export function WeekCalendar({
   currentDate,
   bookings,
   startHour = 7,
   endHour = 20,
+  onTimeSlotClick,
 }: WeekCalendarProps) {
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
@@ -113,6 +122,12 @@ export function WeekCalendar({
   const todayIndex = days.findIndex(day => isSameDay(day, today));
   const startIndex = todayIndex >= 0 && todayIndex < visibleDaysCount ? todayIndex : 0;
   const visibleDays = days.slice(startIndex, startIndex + visibleDaysCount);
+
+  const handleSlotClick = (day: Date, hour: number) => {
+    if (onTimeSlotClick) {
+      onTimeSlotClick(day, hour);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -181,11 +196,16 @@ export function WeekCalendar({
             >
               {hours.map((hour) => {
                 const dayBookings = getBookingsForDayAndHour(day, hour);
+                const isClickable = dayBookings.length === 0;
                 return (
                   <div
                     key={`${day}-${hour}`}
-                    className="relative border-b border-gray-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer p-1"
+                    className={`relative border-b border-gray-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer p-1 ${
+                      isClickable ? 'hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-600' : ''
+                    }`}
                     style={{ height: '48px' }}
+                    onClick={() => isClickable && handleSlotClick(day, hour)}
+                    title={isClickable ? 'Klicken um Termin zu erstellen' : undefined}
                   >
                     {dayBookings.map((booking, idx) => (
                       <div
@@ -198,6 +218,14 @@ export function WeekCalendar({
                       >
                         <div className="truncate font-bold">{booking.guest_name}</div>
                         <div className="truncate text-xs opacity-75">{booking.service}</div>
+                        {booking.staff_id && (
+                          <div 
+                            className="truncate text-xs mt-0.5"
+                            style={{ color: staffColors[booking.staff_id] || '#6B7280' }}
+                          >
+                            {booking.staff_id.replace('staff-', '').charAt(0).toUpperCase() + booking.staff_id.replace('staff-', '').slice(1)}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

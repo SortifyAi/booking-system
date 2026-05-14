@@ -21,6 +21,7 @@ interface Booking {
   service: string;
   status: string;
   location_id: string;
+  staff_id?: string;
 }
 
 interface DayCalendarProps {
@@ -28,6 +29,7 @@ interface DayCalendarProps {
   bookings: Booking[];
   startHour?: number;
   endHour?: number;
+  onTimeSlotClick?: (date: Date, hour: number) => void;
 }
 
 const getServiceColor = (service: string) => {
@@ -69,11 +71,18 @@ const getStatusBadgeColor = (status: string) => {
   }
 };
 
+const staffColors: Record<string, string> = {
+  'staff-anna': '#8B5CF6',
+  'staff-marc': '#3B82F6',
+  'staff-sophie': '#10B981',
+};
+
 export function DayCalendar({
   currentDate,
   bookings,
   startHour = 7,
   endHour = 20,
+  onTimeSlotClick,
 }: DayCalendarProps) {
   const [showNewBookingModal, setShowNewBookingModal] = useState(false);
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
@@ -87,8 +96,6 @@ export function DayCalendar({
   const currentHour = getHours(now);
   const currentMinute = getMinutes(now);
   const showNowLine = isToday(currentDate) && currentHour >= startHour && currentHour < endHour;
-  const nowPercentage = (currentMinute / 60) * 100;
-  const nowTopPercent = ((currentHour - startHour) * 100) + (currentMinute / 60) * 100 / (endHour - startHour);
 
   const calculateBookingPosition = (booking: Booking) => {
     const startTime = new Date(booking.start_time);
@@ -119,6 +126,12 @@ export function DayCalendar({
       cancelled: 'Abgesagt',
     };
     return labels[status?.toLowerCase()] || status;
+  };
+
+  const handleSlotClick = (hour: number) => {
+    if (onTimeSlotClick) {
+      onTimeSlotClick(currentDate, hour);
+    }
   };
 
   return (
@@ -164,11 +177,16 @@ export function DayCalendar({
                 const bStart = new Date(b.start_time);
                 return getHours(bStart) === hour;
               });
+              const isClickable = hourBookings.length === 0;
               
               return (
                 <div
                   key={hour}
-                  className="h-20 border-b border-gray-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors relative"
+                  className={`h-20 border-b border-gray-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors relative cursor-pointer ${
+                    isClickable ? 'hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-600' : ''
+                  }`}
+                  onClick={() => isClickable && handleSlotClick(hour)}
+                  title={isClickable ? 'Klicken um Termin zu erstellen' : undefined}
                 >
                   {/* Current time indicator for this hour */}
                   {showNowLine && currentHour === hour && (
@@ -194,6 +212,14 @@ export function DayCalendar({
                     >
                       <div className="font-bold truncate">{booking.guest_name}</div>
                       <div className="truncate opacity-75 text-[10px]">{booking.service}</div>
+                      {booking.staff_id && (
+                        <div 
+                          className="truncate text-[10px] mt-0.5"
+                          style={{ color: staffColors[booking.staff_id] || '#6B7280' }}
+                        >
+                          {booking.staff_id.replace('staff-', '').charAt(0).toUpperCase() + booking.staff_id.replace('staff-', '').slice(1)}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

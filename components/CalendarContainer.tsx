@@ -12,7 +12,7 @@ import {
   subDays,
 } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WeekCalendar } from './WeekCalendar';
 import { DayCalendar } from './DayCalendar';
@@ -25,6 +25,13 @@ interface Booking {
   service: string;
   status: string;
   location_id: string;
+  staff_id?: string;
+}
+
+interface Staff {
+  id: string;
+  name: string;
+  color: string;
 }
 
 interface CalendarContainerProps {
@@ -33,6 +40,10 @@ interface CalendarContainerProps {
   bookings: Booking[];
   startHour?: number;
   endHour?: number;
+  selectedStaff?: string;
+  onStaffChange?: (staffId: string) => void;
+  staffMembers?: Staff[];
+  onTimeSlotClick?: (date: Date, hour: number) => void;
 }
 
 type ViewType = 'week' | 'day';
@@ -43,6 +54,10 @@ export function CalendarContainer({
   bookings,
   startHour = 7,
   endHour = 20,
+  selectedStaff = 'all',
+  onStaffChange,
+  staffMembers = [],
+  onTimeSlotClick,
 }: CalendarContainerProps) {
   const [view, setView] = useState<ViewType>('week');
 
@@ -93,8 +108,42 @@ export function CalendarContainer({
           </div>
         </div>
 
-        {/* Navigation and tabs */}
+        {/* Navigation, Staff Filter and Tabs */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Staff Filter */}
+          {staffMembers.length > 0 && onStaffChange && (
+            <div className="flex gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
+              <Button
+                variant={selectedStaff === 'all' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => onStaffChange('all')}
+                className={`text-xs font-medium ${
+                  selectedStaff === 'all'
+                    ? ''
+                    : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100'
+                }`}
+              >
+                Alle
+              </Button>
+              {staffMembers.map((staff) => (
+                <Button
+                  key={staff.id}
+                  variant={selectedStaff === staff.id ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => onStaffChange(staff.id)}
+                  className={`text-xs font-medium ${
+                    selectedStaff === staff.id
+                      ? ''
+                      : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100'
+                  }`}
+                  style={selectedStaff === staff.id ? { backgroundColor: staff.color } : {}}
+                >
+                  {staff.name}
+                </Button>
+              ))}
+            </div>
+          )}
+
           {/* View tabs */}
           <div className="flex gap-2 bg-gray-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
             <Button
@@ -122,42 +171,42 @@ export function CalendarContainer({
               Tag
             </Button>
           </div>
+        </div>
 
-          {/* Navigation controls */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrevious}
-              title={view === 'week' ? 'Vorherige Woche' : 'Vorheriger Tag'}
-              className="text-xs"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+        {/* Second row: Navigation controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrevious}
+            title={view === 'week' ? 'Vorherige Woche' : 'Vorheriger Tag'}
+            className="text-xs"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
 
-            <div className="text-sm font-semibold text-gray-900 dark:text-slate-100 min-w-fit px-2 text-center">
-              {getDateRangeLabel()}
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNext}
-              title={view === 'week' ? 'Nächste Woche' : 'Nächster Tag'}
-              className="text-xs"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToday}
-              className="text-xs font-medium"
-            >
-              Heute
-            </Button>
+          <div className="text-sm font-semibold text-gray-900 dark:text-slate-100 min-w-fit px-2 text-center">
+            {getDateRangeLabel()}
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNext}
+            title={view === 'week' ? 'Nächste Woche' : 'Nächster Tag'}
+            className="text-xs"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleToday}
+            className="text-xs font-medium"
+          >
+            Heute
+          </Button>
         </div>
       </div>
 
@@ -169,6 +218,7 @@ export function CalendarContainer({
             bookings={bookings}
             startHour={startHour}
             endHour={endHour}
+            onTimeSlotClick={onTimeSlotClick}
           />
         ) : (
           <DayCalendar
@@ -176,6 +226,7 @@ export function CalendarContainer({
             bookings={bookings}
             startHour={startHour}
             endHour={endHour}
+            onTimeSlotClick={onTimeSlotClick}
           />
         )}
       </div>

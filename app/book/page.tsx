@@ -101,13 +101,18 @@ export default function BookPage() {
   async function fetchLocations() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('id, name, address')
-        .limit(20)
+      // Use API endpoint for mock mode support
+      const response = await fetch('/api/locations')
+      const result = await response.json()
       
-      if (error) throw error
-      setLocations(data || [])
+      if (!response.ok || result.error) throw new Error(result.error || 'Failed to fetch')
+      const fetchedLocations = result.data || []
+      setLocations(fetchedLocations)
+      
+      // Auto-select location if only one exists
+      if (fetchedLocations.length === 1) {
+        setSelectedLocation(fetchedLocations[0])
+      }
     } catch (error) {
       console.error('Error fetching locations:', error)
       // Fallback to mock data if API fails
@@ -122,14 +127,12 @@ export default function BookPage() {
   async function fetchOfferings(locationId: string) {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('offerings')
-        .select('id, name, description, duration_minutes, price_cents, color')
-        .eq('location_id', locationId)
-        .eq('is_active', true)
+      // Use API endpoint instead of direct Supabase client for mock mode support
+      const response = await fetch(`/api/public/offerings?location_id=${locationId}`)
+      const result = await response.json()
       
-      if (error) throw error
-      setOfferings(data || [])
+      if (!response.ok || result.error) throw new Error(result.error || 'Failed to fetch')
+      setOfferings(result.offerings || [])
     } catch (error) {
       console.error('Error fetching offerings:', error)
       // Fallback
@@ -146,6 +149,18 @@ export default function BookPage() {
   async function fetchStaffMembers(locationId: string, offeringId: string) {
     setLoading(true)
     try {
+      // Use mock data directly in mock mode
+      const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === 'true'
+      if (isMock) {
+        setStaffMembers([
+          { id: 'res-anna', name: 'Anna Weber', priority: 1 },
+          { id: 'res-marc', name: 'Marc Schmidt', priority: 2 },
+          { id: 'res-sophie', name: 'Sophie Becker', priority: 3 },
+        ])
+        setLoading(false)
+        return
+      }
+
       const { data, error } = await supabase
         .from('resource_offerings')
         .select('priority, resources(id, name, type, location_id, is_active)')
@@ -168,7 +183,12 @@ export default function BookPage() {
       setStaffMembers(mapped)
     } catch (error) {
       console.error('Error fetching staff members:', error)
-      setStaffMembers([])
+      // Fallback mock staff data
+      setStaffMembers([
+        { id: 'res-anna', name: 'Anna Weber', priority: 1 },
+        { id: 'res-marc', name: 'Marc Schmidt', priority: 2 },
+        { id: 'res-sophie', name: 'Sophie Becker', priority: 3 },
+      ])
     } finally {
       setLoading(false)
     }

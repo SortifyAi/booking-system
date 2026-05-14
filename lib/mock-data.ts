@@ -86,6 +86,24 @@ export const mockOfferings = [
   },
 ]
 
+export const mockStaff = [
+  {
+    id: 'staff-anna',
+    name: 'Anna',
+    color: '#8B5CF6',
+  },
+  {
+    id: 'staff-marc',
+    name: 'Marc',
+    color: '#3B82F6',
+  },
+  {
+    id: 'staff-sophie',
+    name: 'Sophie',
+    color: '#10B981',
+  },
+];
+
 export const mockResources = [
   {
     id: 'res-anna',
@@ -95,6 +113,24 @@ export const mockResources = [
     location_id: 'loc-berlin',
     organization_id: 'org-1',
     created_at: addDays(now, -60).toISOString(),
+  },
+  {
+    id: 'res-marc',
+    name: 'Marc Bauer',
+    type: 'staff',
+    capacity: 1,
+    location_id: 'loc-berlin',
+    organization_id: 'org-1',
+    created_at: addDays(now, -55).toISOString(),
+  },
+  {
+    id: 'res-sophie',
+    name: 'Sophie Klein',
+    type: 'staff',
+    capacity: 1,
+    location_id: 'loc-hamburg',
+    organization_id: 'org-1',
+    created_at: addDays(now, -50).toISOString(),
   },
   {
     id: 'res-room-1',
@@ -126,6 +162,7 @@ export const mockBookings = [
     guest_name: 'Lena Hoffmann',
     service: 'Haircut',
     location_id: 'loc-berlin',
+    staff_id: 'staff-anna',
   },
   {
     id: 'book-002',
@@ -135,6 +172,7 @@ export const mockBookings = [
     guest_name: 'Tom Berger',
     service: 'Massage',
     location_id: 'loc-berlin',
+    staff_id: 'staff-marc',
   },
   {
     id: 'book-003',
@@ -144,6 +182,7 @@ export const mockBookings = [
     guest_name: 'Anna Schmidt',
     service: 'Konsultation',
     location_id: 'loc-berlin',
+    staff_id: 'staff-sophie',
   },
   // Tomorrow bookings
   {
@@ -154,6 +193,7 @@ export const mockBookings = [
     guest_name: 'Mara Klein',
     service: 'Haircut',
     location_id: 'loc-hamburg',
+    staff_id: 'staff-anna',
   },
   {
     id: 'book-005',
@@ -163,6 +203,7 @@ export const mockBookings = [
     guest_name: 'Jonas Köhler',
     service: 'Massage',
     location_id: 'loc-hamburg',
+    staff_id: 'staff-sophie',
   },
   // Day 2
   {
@@ -173,6 +214,7 @@ export const mockBookings = [
     guest_name: 'Peter Müller',
     service: 'Haircut',
     location_id: 'loc-munich',
+    staff_id: 'staff-marc',
   },
   {
     id: 'book-007',
@@ -182,6 +224,7 @@ export const mockBookings = [
     guest_name: 'Sophia Weber',
     service: 'Konsultation',
     location_id: 'loc-munich',
+    staff_id: 'staff-anna',
   },
   {
     id: 'book-008',
@@ -191,6 +234,7 @@ export const mockBookings = [
     guest_name: 'Klaus Fischer',
     service: 'Massage',
     location_id: 'loc-munich',
+    staff_id: 'staff-sophie',
   },
   // Day 3
   {
@@ -201,6 +245,7 @@ export const mockBookings = [
     guest_name: 'Iris Keller',
     service: 'Haircut',
     location_id: 'loc-berlin',
+    staff_id: 'staff-anna',
   },
   {
     id: 'book-010',
@@ -210,6 +255,7 @@ export const mockBookings = [
     guest_name: 'Marco Rossi',
     service: 'Massage',
     location_id: 'loc-berlin',
+    staff_id: 'staff-marc',
   },
   // Day 4
   {
@@ -220,6 +266,7 @@ export const mockBookings = [
     guest_name: 'Nina Bauer',
     service: 'Konsultation',
     location_id: 'loc-hamburg',
+    staff_id: 'staff-sophie',
   },
   {
     id: 'book-012',
@@ -229,6 +276,7 @@ export const mockBookings = [
     guest_name: 'Robert Schmidt',
     service: 'Haircut',
     location_id: 'loc-hamburg',
+    staff_id: 'staff-anna',
   },
   // Day 5
   {
@@ -239,6 +287,7 @@ export const mockBookings = [
     guest_name: 'Eva Richter',
     service: 'Massage',
     location_id: 'loc-munich',
+    staff_id: 'staff-marc',
   },
   {
     id: 'book-014',
@@ -248,6 +297,7 @@ export const mockBookings = [
     guest_name: 'Frank Wagner',
     service: 'Haircut',
     location_id: 'loc-munich',
+    staff_id: 'staff-sophie',
   },
   {
     id: 'book-015',
@@ -257,6 +307,7 @@ export const mockBookings = [
     guest_name: 'Greta Wolf',
     service: 'Konsultation',
     location_id: 'loc-munich',
+    staff_id: 'staff-anna',
   },
   // Day 6 (Saturday)
   {
@@ -267,6 +318,7 @@ export const mockBookings = [
     guest_name: 'Hans Meier',
     service: 'Haircut',
     location_id: 'loc-berlin',
+    staff_id: 'staff-marc',
   },
 ]
 
