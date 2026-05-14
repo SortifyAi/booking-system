@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { CalendarContainer } from '@/components/CalendarContainer';
+import { Switch } from '@/components/ui/switch';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockBookings, mockStaff } from '@/lib/mock-data';
 import { Calendar as CalendarIcon, Plus } from 'lucide-react';
@@ -37,6 +38,7 @@ interface Staff {
 }
 
 export default function CalendarPage() {
+  const [viewMode, setViewMode] = React.useState<'week'|'day'>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +141,18 @@ export default function CalendarPage() {
 
   return (
     <>
-      <CalendarContainer
+      <div className="flex items-center mb-4">
+        <span className="mr-2 font-medium">Ansicht:</span>
+        <button
+          className={`px-3 py-1 rounded ${viewMode==='week'?"bg-blue-500 text-white":"bg-gray-200"}`}
+          onClick={()=>setViewMode('week')}
+        >Wochenansicht</button>
+        <button
+          className={`ml-2 px-3 py-1 rounded ${viewMode==='day'?"bg-blue-500 text-white":"bg-gray-200"}`}
+          onClick={()=>setViewMode('day')}
+        >Tagesansicht</button>
+      </div>
+      <CalendarContainer viewMode={viewMode}
         currentDate={currentDate}
         setCurrentDate={setCurrentDate}
         bookings={filteredBookings}
