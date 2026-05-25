@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, MapPin, BookOpen, LayoutDashboard, LogOut, X, Briefcase, Users, Settings as SettingsIcon } from 'lucide-react';
+import { Calendar, MapPin, BookOpen, LayoutDashboard, LogOut, X, Briefcase, Users, Settings as SettingsIcon, CalendarOff, Award } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { isMockMode } from '@/lib/utils/mock';
@@ -14,6 +14,8 @@ const navigation = [
   { name: 'Kalender', href: '/dashboard/calendar', icon: Calendar },
   { name: 'Leistungen', href: '/dashboard/services', icon: Briefcase },
   { name: 'Personal', href: '/dashboard/resources', icon: Users },
+  { name: 'Fähigkeiten', href: '/dashboard/skills', icon: Award },
+  { name: 'Abwesenheiten', href: '/dashboard/blocks', icon: CalendarOff },
   { name: 'Einstellungen', href: '/dashboard/settings', icon: SettingsIcon },
 ];
 

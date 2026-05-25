@@ -4,16 +4,13 @@ import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { z } from 'zod'
 
-const updateResourceSchema = z.object({
-  name: z.string().min(1).optional(),
-  type: z.enum(['staff', 'table', 'room', 'equipment']).optional(),
-  capacity: z.number().int().positive().optional(),
-  isActive: z.boolean().optional(),
-  skills: z.array(z.string()).optional(),
+const updateBlockSchema = z.object({
+  reason: z.string().optional(),
+  type: z.enum(['vacation', 'sick', 'break', 'maintenance', 'other']).optional(),
 })
 
 /**
- * GET /api/resources/[id]
+ * GET /api/blocks/[id]
  */
 export async function GET(
   request: NextRequest,
@@ -28,37 +25,25 @@ export async function GET(
     const { id } = await params
     const client = await createClient()
 
-    const { data: resource, error } = await client
-      .from('resources')
+    const { data: block, error } = await client
+      .from('blocks')
       .select('*')
       .eq('id', id)
       .single() as any
 
-    if (error || !resource) {
-      return NextResponse.json({ error: 'Ressource nicht gefunden' }, { status: 404 })
+    if (error || !block) {
+      return NextResponse.json({ error: 'Block nicht gefunden' }, { status: 404 })
     }
 
-    // Check access
-    const { data: membership } = await client
-      .from('user_organizations')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('organization_id', resource.organization_id)
-      .single() as any
-
-    if (!membership) {
-      return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 403 })
-    }
-
-    return NextResponse.json(resource)
+    return NextResponse.json(block)
   } catch (error) {
-    console.error('Error fetching resource:', error)
+    console.error('Error fetching block:', error)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
 
 /**
- * PATCH /api/resources/[id]
+ * PATCH /api/blocks/[id]
  */
 export async function PATCH(
   request: NextRequest,
@@ -73,7 +58,7 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const validationResult = updateResourceSchema.safeParse(body)
+    const validationResult = updateBlockSchema.safeParse(body)
     if (!validationResult.success) {
       return NextResponse.json(
         { error: 'Validierung fehlgeschlagen', details: validationResult.error.issues },
@@ -83,15 +68,15 @@ export async function PATCH(
 
     const client = await createClient()
 
-    // Get resource
-    const { data: resource, error: getError } = await client
-      .from('resources')
+    // Get block
+    const { data: block, error: getError } = await client
+      .from('blocks')
       .select('organization_id')
       .eq('id', id)
       .single() as any
 
-    if (getError || !resource) {
-      return NextResponse.json({ error: 'Ressource nicht gefunden' }, { status: 404 })
+    if (getError || !block) {
+      return NextResponse.json({ error: 'Block nicht gefunden' }, { status: 404 })
     }
 
     // Check permission
@@ -99,7 +84,7 @@ export async function PATCH(
       .from('user_organizations')
       .select('role')
       .eq('user_id', user.id)
-      .eq('organization_id', resource.organization_id)
+      .eq('organization_id', block.organization_id)
       .single() as any
 
     if (!['owner', 'admin', 'manager'].includes(membership?.role || '')) {
@@ -108,7 +93,7 @@ export async function PATCH(
 
     // Update
     const { data: updated, error: updateError } = await client
-      .from('resources')
+      .from('blocks')
       .update(validationResult.data)
       .eq('id', id)
       .select()
@@ -117,13 +102,13 @@ export async function PATCH(
     if (updateError) throw updateError
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating resource:', error)
+    console.error('Error updating block:', error)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
 
 /**
- * DELETE /api/resources/[id]
+ * DELETE /api/blocks/[id]
  */
 export async function DELETE(
   request: NextRequest,
@@ -138,15 +123,15 @@ export async function DELETE(
     const { id } = await params
     const client = await createClient()
 
-    // Get resource
-    const { data: resource, error: getError } = await client
-      .from('resources')
+    // Get block
+    const { data: block, error: getError } = await client
+      .from('blocks')
       .select('organization_id')
       .eq('id', id)
       .single() as any
 
-    if (getError || !resource) {
-      return NextResponse.json({ error: 'Ressource nicht gefunden' }, { status: 404 })
+    if (getError || !block) {
+      return NextResponse.json({ error: 'Block nicht gefunden' }, { status: 404 })
     }
 
     // Check permission (admin/owner only)
@@ -154,7 +139,7 @@ export async function DELETE(
       .from('user_organizations')
       .select('role')
       .eq('user_id', user.id)
-      .eq('organization_id', resource.organization_id)
+      .eq('organization_id', block.organization_id)
       .single() as any
 
     if (!['owner', 'admin'].includes(membership?.role || '')) {
@@ -163,14 +148,14 @@ export async function DELETE(
 
     // Delete
     const { error: deleteError } = await client
-      .from('resources')
+      .from('blocks')
       .delete()
       .eq('id', id)
 
     if (deleteError) throw deleteError
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting resource:', error)
+    console.error('Error deleting block:', error)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }

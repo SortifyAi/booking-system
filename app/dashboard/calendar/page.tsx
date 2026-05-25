@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client';
 
+import * as React from 'react';
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -54,8 +55,32 @@ export default function CalendarPage() {
     staff_id: '',
   });
   const supabase = createClient();
+  const [staffMembers, setStaffMembers] = useState<Staff[]>([]);
 
-  const staffMembers: Staff[] = mockStaff;
+  const fetchStaff = useCallback(async () => {
+    try {
+      if (isMockMode()) {
+        setStaffMembers(mockStaff);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('resources')
+        .select('id, name, color')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      
+      const mapped = (data || []).map((r, idx) => ({
+        id: r.id,
+        name: r.name,
+        color: ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'][idx % 6],
+      }));
+      setStaffMembers(mapped);
+    } catch (error) {
+      console.error('Staff fetch error:', error);
+    }
+  }, [supabase]);
 
   const fetchBookings = useCallback(async () => {
     try {
@@ -81,7 +106,8 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetchBookings();
-  }, [fetchBookings]);
+    fetchStaff();
+  }, [fetchBookings, fetchStaff]);
 
   // Filter bookings by selected staff
   const filteredBookings = selectedStaff === 'all'

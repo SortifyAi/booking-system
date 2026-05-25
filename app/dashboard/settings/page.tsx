@@ -53,10 +53,11 @@ export default function SettingsPage() {
 
       const email = user.email || 'user';
       const orgName = `${email.split('@')[0]}'s Organization`;
+      const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
       const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .insert({ name: orgName })
+        .insert({ name: orgName, slug })
         .select()
         .single();
 

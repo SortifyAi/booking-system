@@ -4,16 +4,14 @@ import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { z } from 'zod'
 
-const updateResourceSchema = z.object({
-  name: z.string().min(1).optional(),
-  type: z.enum(['staff', 'table', 'room', 'equipment']).optional(),
-  capacity: z.number().int().positive().optional(),
+const updateScheduleSchema = z.object({
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/).optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/).optional(),
   isActive: z.boolean().optional(),
-  skills: z.array(z.string()).optional(),
 })
 
 /**
- * GET /api/resources/[id]
+ * GET /api/schedules/[id]
  */
 export async function GET(
   request: NextRequest,
@@ -28,37 +26,25 @@ export async function GET(
     const { id } = await params
     const client = await createClient()
 
-    const { data: resource, error } = await client
-      .from('resources')
+    const { data: schedule, error } = await client
+      .from('schedules')
       .select('*')
       .eq('id', id)
       .single() as any
 
-    if (error || !resource) {
-      return NextResponse.json({ error: 'Ressource nicht gefunden' }, { status: 404 })
+    if (error || !schedule) {
+      return NextResponse.json({ error: 'Zeitplan nicht gefunden' }, { status: 404 })
     }
 
-    // Check access
-    const { data: membership } = await client
-      .from('user_organizations')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('organization_id', resource.organization_id)
-      .single() as any
-
-    if (!membership) {
-      return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 403 })
-    }
-
-    return NextResponse.json(resource)
+    return NextResponse.json(schedule)
   } catch (error) {
-    console.error('Error fetching resource:', error)
+    console.error('Error fetching schedule:', error)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
 
 /**
- * PATCH /api/resources/[id]
+ * PATCH /api/schedules/[id]
  */
 export async function PATCH(
   request: NextRequest,
@@ -73,7 +59,7 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const validationResult = updateResourceSchema.safeParse(body)
+    const validationResult = updateScheduleSchema.safeParse(body)
     if (!validationResult.success) {
       return NextResponse.json(
         { error: 'Validierung fehlgeschlagen', details: validationResult.error.issues },
@@ -83,15 +69,15 @@ export async function PATCH(
 
     const client = await createClient()
 
-    // Get resource
-    const { data: resource, error: getError } = await client
-      .from('resources')
+    // Get schedule
+    const { data: schedule, error: getError } = await client
+      .from('schedules')
       .select('organization_id')
       .eq('id', id)
       .single() as any
 
-    if (getError || !resource) {
-      return NextResponse.json({ error: 'Ressource nicht gefunden' }, { status: 404 })
+    if (getError || !schedule) {
+      return NextResponse.json({ error: 'Zeitplan nicht gefunden' }, { status: 404 })
     }
 
     // Check permission
@@ -99,7 +85,7 @@ export async function PATCH(
       .from('user_organizations')
       .select('role')
       .eq('user_id', user.id)
-      .eq('organization_id', resource.organization_id)
+      .eq('organization_id', schedule.organization_id)
       .single() as any
 
     if (!['owner', 'admin', 'manager'].includes(membership?.role || '')) {
@@ -108,7 +94,7 @@ export async function PATCH(
 
     // Update
     const { data: updated, error: updateError } = await client
-      .from('resources')
+      .from('schedules')
       .update(validationResult.data)
       .eq('id', id)
       .select()
@@ -117,13 +103,13 @@ export async function PATCH(
     if (updateError) throw updateError
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating resource:', error)
+    console.error('Error updating schedule:', error)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
 
 /**
- * DELETE /api/resources/[id]
+ * DELETE /api/schedules/[id]
  */
 export async function DELETE(
   request: NextRequest,
@@ -138,15 +124,15 @@ export async function DELETE(
     const { id } = await params
     const client = await createClient()
 
-    // Get resource
-    const { data: resource, error: getError } = await client
-      .from('resources')
+    // Get schedule
+    const { data: schedule, error: getError } = await client
+      .from('schedules')
       .select('organization_id')
       .eq('id', id)
       .single() as any
 
-    if (getError || !resource) {
-      return NextResponse.json({ error: 'Ressource nicht gefunden' }, { status: 404 })
+    if (getError || !schedule) {
+      return NextResponse.json({ error: 'Zeitplan nicht gefunden' }, { status: 404 })
     }
 
     // Check permission (admin/owner only)
@@ -154,7 +140,7 @@ export async function DELETE(
       .from('user_organizations')
       .select('role')
       .eq('user_id', user.id)
-      .eq('organization_id', resource.organization_id)
+      .eq('organization_id', schedule.organization_id)
       .single() as any
 
     if (!['owner', 'admin'].includes(membership?.role || '')) {
@@ -163,14 +149,14 @@ export async function DELETE(
 
     // Delete
     const { error: deleteError } = await client
-      .from('resources')
+      .from('schedules')
       .delete()
       .eq('id', id)
 
     if (deleteError) throw deleteError
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting resource:', error)
+    console.error('Error deleting schedule:', error)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
