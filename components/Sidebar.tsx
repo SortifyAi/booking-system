@@ -14,7 +14,7 @@ const navigation = [
   { name: 'Kalender', href: '/dashboard/calendar', icon: Calendar },
   { name: 'Leistungen', href: '/dashboard/services', icon: Briefcase },
   { name: 'Personal', href: '/dashboard/resources', icon: Users },
-  { name: 'Fähigkeiten', href: '/dashboard/skills', icon: Award },
+  { name: 'Fähigkeiten', href: '/dashboard/skills', icon: Award, mockOnly: true },
   { name: 'Abwesenheiten', href: '/dashboard/blocks', icon: CalendarOff },
   { name: 'Einstellungen', href: '/dashboard/settings', icon: SettingsIcon },
 ];
@@ -27,6 +27,7 @@ export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const visibleNavigation = navigation.filter((item) => !item.mockOnly || isMockMode());
 
   const handleLogout = async () => {
     try {
@@ -54,7 +55,7 @@ export function Sidebar({ onClose }: SidebarProps) {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
 

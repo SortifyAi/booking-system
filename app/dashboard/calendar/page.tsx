@@ -6,10 +6,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { CalendarContainer } from '@/components/CalendarContainer';
-import { Switch } from '@/components/ui/switch';
 import { isMockMode } from '@/lib/utils/mock';
-import { mockBookings, mockStaff } from '@/lib/mock-data';
-import { Calendar as CalendarIcon, Plus } from 'lucide-react';
+import { mockBookings, mockLocations, mockOfferings, mockStaff } from '@/lib/mock-data';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -20,29 +19,44 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  CalendarBooking,
+  CalendarStaffMember,
+  normalizeCalendarBooking,
+} from '@/lib/calendar-admin';
 
-interface Booking {
-  id: string;
-  start_time: string;
-  end_time: string;
-  guest_name: string;
-  service: string;
-  status: string;
-  location_id: string;
-  staff_id?: string;
-}
-
-interface Staff {
+interface Location {
   id: string;
   name: string;
-  color: string;
+  organization_id?: string;
 }
 
+interface Offering {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  location_id?: string;
+}
+
+const staffColorPalette = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
+
+const formatDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatTimeInput = (date: Date) => {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
+
 export default function CalendarPage() {
-  const [viewMode, setViewMode] = React.useState<'week'|'day'>('week');
+  const [viewMode, setViewMode] = React.useState<'week' | 'day'>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<CalendarBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [quickCreateData, setQuickCreateData] = useState<{
@@ -50,110 +64,225 @@ export default function CalendarPage() {
     hour: number;
   } | null>(null);
   const [newBooking, setNewBooking] = useState({
-    guest_name: '',
+    customer_name: '',
+    customer_email: '',
+    customer_phone: '',
+    location_id: '',
+    offering_id: '',
     service: '',
     staff_id: '',
+    date: '',
+    time: '',
+    duration_minutes: 60,
+    notes: '',
+    status: 'confirmed',
   });
-  const supabase = createClient();
-  const [staffMembers, setStaffMembers] = useState<Staff[]>([]);
+  const [staffMembers, setStaffMembers] = useState<CalendarStaffMember[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [offerings, setOfferings] = useState<Offering[]>([]);
+  const supabase = React.useMemo(() => createClient(), []);
 
-  const fetchStaff = useCallback(async () => {
-    try {
-      if (isMockMode()) {
-        setStaffMembers(mockStaff);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('resources')
-        .select('id, name, color')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      
-      const mapped = (data || []).map((r, idx) => ({
-        id: r.id,
-        name: r.name,
-        color: ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'][idx % 6],
-      }));
-      setStaffMembers(mapped);
-    } catch (error) {
-      console.error('Staff fetch error:', error);
-    }
-  }, [supabase]);
-
-  const fetchBookings = useCallback(async () => {
+  const loadCalendarData = useCallback(async () => {
     try {
       setLoading(true);
 
       if (isMockMode()) {
-        setBookings(mockBookings);
+        const mockCalendarStaff = mockStaff.map((staff) => ({
+          id: staff.id,
+          name: staff.name,
+          color: staff.color,
+        }));
+
+        setStaffMembers(mockCalendarStaff);
+        setLocations(mockLocations.map(({ id, name, organization_id }) => ({ id, name, organization_id })));
+        setOfferings(mockOfferings.map(({ id, name, duration_minutes, location_id }) => ({
+          id,
+          name,
+          duration_minutes,
+          location_id,
+        })));
+        setBookings(mockBookings.map((booking) => normalizeCalendarBooking(booking, mockCalendarStaff)));
         return;
       }
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*');
+      const [staffData, locationsData, offeringsData, bookingsData] = await Promise.all([
+        supabase
+          .from('resources')
+          .select('id, name, type')
+          .eq('type', 'staff')
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('locations')
+          .select('id, name, organization_id')
+          .order('name'),
+        supabase
+          .from('offerings')
+          .select('id, name, duration_minutes, location_id')
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('bookings')
+          .select('*, offerings(name), resources(id, name)')
+          .order('start_time', { ascending: true }),
+      ]);
 
-      if (error) throw error;
-      setBookings(data || []);
+      if (staffData.error) throw staffData.error;
+      if (locationsData.error) throw locationsData.error;
+      if (offeringsData.error) throw offeringsData.error;
+      if (bookingsData.error) throw bookingsData.error;
+
+      const calendarStaff = (staffData.data || []).map((resource, idx) => ({
+        id: resource.id,
+        name: resource.name,
+        color: staffColorPalette[idx % staffColorPalette.length],
+      }));
+
+      setStaffMembers(calendarStaff);
+      setLocations(locationsData.data || []);
+      setOfferings(offeringsData.data || []);
+      setBookings((bookingsData.data || []).map((booking) => normalizeCalendarBooking(booking, calendarStaff)));
     } catch (error) {
-      toast.error('Buchungen konnten nicht geladen werden');
+      console.error('Calendar load error:', error);
+      toast.error('Kalenderdaten konnten nicht geladen werden');
     } finally {
       setLoading(false);
     }
   }, [supabase]);
 
   useEffect(() => {
-    fetchBookings();
-    fetchStaff();
-  }, [fetchBookings, fetchStaff]);
+    loadCalendarData();
+  }, [loadCalendarData]);
 
-  // Filter bookings by selected staff
   const filteredBookings = selectedStaff === 'all'
     ? bookings
-    : bookings.filter(booking => booking.staff_id === selectedStaff);
+    : bookings.filter((booking) => booking.staff_id === selectedStaff);
 
   const handleQuickCreate = (date: Date, hour: number) => {
     const selectedDate = new Date(date);
     selectedDate.setHours(hour, 0, 0, 0);
+
+    const defaultOffering = offerings[0];
+    const defaultLocationId = defaultOffering?.location_id || locations[0]?.id || '';
+    const defaultStaffId = selectedStaff !== 'all' ? selectedStaff : staffMembers[0]?.id || '';
+
     setQuickCreateData({ date: selectedDate, hour });
     setNewBooking({
-      guest_name: '',
-      service: '',
-      staff_id: selectedStaff !== 'all' ? selectedStaff : '',
+      customer_name: '',
+      customer_email: '',
+      customer_phone: '',
+      location_id: defaultLocationId,
+      offering_id: defaultOffering?.id || '',
+      service: defaultOffering?.name || '',
+      staff_id: defaultStaffId,
+      date: formatDateInput(selectedDate),
+      time: formatTimeInput(selectedDate),
+      duration_minutes: defaultOffering?.duration_minutes || 60,
+      notes: '',
+      status: 'confirmed',
     });
     setIsModalOpen(true);
   };
 
-  const handleSaveQuickBooking = () => {
-    if (!newBooking.guest_name || !newBooking.service) {
-      toast.error('Bitte Name und Service ausfüllen');
+  const handleOfferingChange = (offeringId: string) => {
+    const offering = offerings.find((item) => item.id === offeringId);
+    setNewBooking((prev) => ({
+      ...prev,
+      offering_id: offeringId,
+      service: offering?.name || prev.service,
+      location_id: offering?.location_id || prev.location_id,
+      duration_minutes: offering?.duration_minutes || prev.duration_minutes,
+    }));
+  };
+
+  const handleSaveQuickBooking = async () => {
+    if (!newBooking.customer_name || !newBooking.date || !newBooking.time) {
+      toast.error('Bitte Name, Datum und Uhrzeit ausfüllen');
       return;
     }
 
-    if (!quickCreateData) return;
+    if (!newBooking.staff_id) {
+      toast.error('Bitte Mitarbeiter auswählen');
+      return;
+    }
 
-    const startTime = new Date(quickCreateData.date);
-    const endTime = new Date(startTime);
-    endTime.setHours(endTime.getHours() + 1);
+    if (!newBooking.location_id) {
+      toast.error('Bitte Standort auswählen');
+      return;
+    }
 
-    const newBookingEntry: Booking = {
-      id: `book-${Date.now()}`,
-      start_time: startTime.toISOString(),
-      end_time: endTime.toISOString(),
-      guest_name: newBooking.guest_name,
-      service: newBooking.service,
-      status: 'pending',
-      location_id: 'loc-berlin',
-      staff_id: newBooking.staff_id || undefined,
-    };
+    if (!newBooking.offering_id && !newBooking.service) {
+      toast.error('Bitte Leistung auswählen oder eintragen');
+      return;
+    }
 
-    setBookings(prev => [...prev, newBookingEntry]);
-    toast.success('Termin wurde erstellt');
-    setIsModalOpen(false);
-    setQuickCreateData(null);
-    setNewBooking({ guest_name: '', service: '', staff_id: '' });
+    const startTime = new Date(`${newBooking.date}T${newBooking.time}`);
+    const endTime = new Date(startTime.getTime() + newBooking.duration_minutes * 60000);
+    const staff = staffMembers.find((member) => member.id === newBooking.staff_id);
+    const offering = offerings.find((item) => item.id === newBooking.offering_id);
+    const location = locations.find((item) => item.id === newBooking.location_id);
+
+    setSubmitting(true);
+    try {
+      if (isMockMode()) {
+        const newBookingEntry: CalendarBooking = {
+          id: `book-${Date.now()}`,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          guest_name: newBooking.customer_name,
+          service: offering?.name || newBooking.service,
+          status: newBooking.status,
+          location_id: newBooking.location_id,
+          offering_id: newBooking.offering_id || null,
+          resource_id: newBooking.staff_id,
+          staff_id: newBooking.staff_id,
+          staff_name: staff?.name,
+          staff_color: staff?.color,
+        };
+
+        setBookings((prev) => [...prev, newBookingEntry]);
+        toast.success('Termin wurde erstellt');
+        setIsModalOpen(false);
+        setQuickCreateData(null);
+        return;
+      }
+
+      if (!location?.organization_id) {
+        toast.error('Organisation für den Standort fehlt');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('bookings')
+        .insert({
+          organization_id: location.organization_id,
+          location_id: newBooking.location_id,
+          offering_id: newBooking.offering_id || null,
+          resource_id: newBooking.staff_id,
+          customer_name: newBooking.customer_name,
+          customer_email: newBooking.customer_email || '',
+          customer_phone: newBooking.customer_phone || null,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          status: newBooking.status,
+          notes: newBooking.notes || null,
+          metadata: { createdFrom: 'admin-calendar' },
+        })
+        .select('*, offerings(name), resources(id, name)')
+        .single();
+
+      if (error) throw error;
+
+      setBookings((prev) => [...prev, normalizeCalendarBooking(data, staffMembers)]);
+      toast.success('Termin wurde erstellt');
+      setIsModalOpen(false);
+      setQuickCreateData(null);
+    } catch (error) {
+      console.error('Calendar booking create error:', error);
+      toast.error('Termin konnte nicht erstellt werden');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -167,18 +296,9 @@ export default function CalendarPage() {
 
   return (
     <>
-      <div className="flex items-center mb-4">
-        <span className="mr-2 font-medium">Ansicht:</span>
-        <button
-          className={`px-3 py-1 rounded ${viewMode==='week'?"bg-blue-500 text-white":"bg-gray-200"}`}
-          onClick={()=>setViewMode('week')}
-        >Wochenansicht</button>
-        <button
-          className={`ml-2 px-3 py-1 rounded ${viewMode==='day'?"bg-blue-500 text-white":"bg-gray-200"}`}
-          onClick={()=>setViewMode('day')}
-        >Tagesansicht</button>
-      </div>
-      <CalendarContainer viewMode={viewMode}
+      <CalendarContainer
+        view={viewMode}
+        onViewChange={setViewMode}
         currentDate={currentDate}
         setCurrentDate={setCurrentDate}
         bookings={filteredBookings}
@@ -190,64 +310,175 @@ export default function CalendarPage() {
         onTimeSlotClick={handleQuickCreate}
       />
 
-      {/* Quick Create Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>Neuer Termin</DialogTitle>
+            <DialogTitle>Neue Buchung</DialogTitle>
             <DialogDescription>
               {quickCreateData && (
                 <>Termin am {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:00 Uhr</>
               )}
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4 py-4">
+
+          <div className="space-y-4 py-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
                 Kunde *
               </label>
               <Input
                 placeholder="Name des Kunden"
-                value={newBooking.guest_name}
-                onChange={(e) => setNewBooking(prev => ({ ...prev, guest_name: e.target.value }))}
+                value={newBooking.customer_name}
+                onChange={(e) => setNewBooking((prev) => ({ ...prev, customer_name: e.target.value }))}
+                autoFocus
               />
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                Service *
-              </label>
-              <Input
-                placeholder="z.B. Haircut, Massage"
-                value={newBooking.service}
-                onChange={(e) => setNewBooking(prev => ({ ...prev, service: e.target.value }))}
-              />
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Datum *
+                </label>
+                <Input
+                  type="date"
+                  value={newBooking.date}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Uhrzeit *
+                </label>
+                <Input
+                  type="time"
+                  value={newBooking.time}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, time: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Leistung *
+                </label>
+                {offerings.length > 0 ? (
+                  <select
+                    value={newBooking.offering_id}
+                    onChange={(e) => handleOfferingChange(e.target.value)}
+                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    {offerings.map((offering) => (
+                      <option key={offering.id} value={offering.id}>
+                        {offering.name} ({offering.duration_minutes} Min.)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    placeholder="z.B. Beratung"
+                    value={newBooking.service}
+                    onChange={(e) => setNewBooking((prev) => ({ ...prev, service: e.target.value }))}
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Dauer
+                </label>
+                <select
+                  value={newBooking.duration_minutes}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, duration_minutes: Number(e.target.value) }))}
+                  className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value={30}>30 Min.</option>
+                  <option value={45}>45 Min.</option>
+                  <option value={60}>60 Min.</option>
+                  <option value={90}>90 Min.</option>
+                  <option value={120}>120 Min.</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Mitarbeiter *
+                </label>
+                <select
+                  value={newBooking.staff_id}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="" disabled>Mitarbeiter wählen...</option>
+                  {staffMembers.map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Standort *
+                </label>
+                <select
+                  value={newBooking.location_id}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, location_id: e.target.value }))}
+                  className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="" disabled>Standort wählen...</option>
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>{location.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  E-Mail
+                </label>
+                <Input
+                  type="email"
+                  placeholder="optional"
+                  value={newBooking.customer_email}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, customer_email: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Telefon
+                </label>
+                <Input
+                  type="tel"
+                  placeholder="optional"
+                  value={newBooking.customer_phone}
+                  onChange={(e) => setNewBooking((prev) => ({ ...prev, customer_phone: e.target.value }))}
+                />
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-                Mitarbeiter (optional)
+                Notizen
               </label>
-              <select
-                value={newBooking.staff_id}
-                onChange={(e) => setNewBooking(prev => ({ ...prev, staff_id: e.target.value }))}
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              >
-                <option value="">Keine Auswahl</option>
-                {staffMembers.map(staff => (
-                  <option key={staff.id} value={staff.id}>{staff.name}</option>
-                ))}
-              </select>
+              <textarea
+                value={newBooking.notes}
+                onChange={(e) => setNewBooking((prev) => ({ ...prev, notes: e.target.value }))}
+                className="block min-h-20 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                placeholder="optional"
+              />
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsModalOpen(false)}>
               Abbrechen
             </Button>
-            <Button onClick={handleSaveQuickBooking}>
-              Termin speichern
+            <Button onClick={handleSaveQuickBooking} disabled={submitting || staffMembers.length === 0}>
+              {submitting ? 'Speichert...' : 'Termin speichern'}
             </Button>
           </DialogFooter>
         </DialogContent>

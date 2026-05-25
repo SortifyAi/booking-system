@@ -175,35 +175,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If resourceId is provided, validate it exists and is a staff member
+    // If resourceId is provided, validate it exists as active staff at the location.
+    // For the first production test, every active staff member can perform every offering.
     if (resourceId) {
       const { data: resource, error: resError } = await client
         .from('resources')
-        .select('id, type, location_id')
+        .select('id, type, location_id, is_active')
         .eq('id', resourceId)
         .eq('type', 'staff')
         .eq('location_id', locationId)
+        .eq('is_active', true)
         .single() as any
 
       if (resError || !resource) {
         return NextResponse.json(
           { error: 'Mitarbeiter nicht gefunden' },
           { status: 404 }
-        )
-      }
-
-      const { data: resourceOffering, error: resourceOfferingError } = await client
-        .from('resource_offerings')
-        .select('resource_id')
-        .eq('resource_id', resourceId)
-        .eq('offering_id', offeringId)
-        .eq('is_active', true)
-        .single() as any
-
-      if (resourceOfferingError || !resourceOffering) {
-        return NextResponse.json(
-          { error: 'Mitarbeiter kann diese Leistung nicht anbieten' },
-          { status: 400 }
         )
       }
     }

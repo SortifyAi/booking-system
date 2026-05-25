@@ -125,15 +125,14 @@ export async function GET(request: NextRequest) {
     const isSmartMode = mode === 'smart'
     const preferredId = preferredStaffId || staffId
 
-    // Get staff members (resources with type='staff') that can perform the offering
+    // For the first production test, every active staff member at the location
+    // can perform every active offering.
     let staffQuery = client
       .from('resources')
-      .select('id, name, capacity, resource_offerings!inner(priority, is_active, offering_id)')
+      .select('id, name, capacity')
       .eq('location_id', locationId)
       .eq('type', 'staff')
       .eq('is_active', true)
-      .eq('resource_offerings.offering_id', offeringId)
-      .eq('resource_offerings.is_active', true)
 
     if (preferredId && !isSmartMode) {
       staffQuery = staffQuery.eq('id', preferredId)
@@ -151,11 +150,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const staffMembers = staffMembersRaw.map((staff: any) => ({
+    const staffMembers = staffMembersRaw.map((staff: any, idx: number) => ({
       ...staff,
-      priority: Array.isArray(staff.resource_offerings)
-        ? staff.resource_offerings[0]?.priority ?? 0
-        : 0,
+      priority: idx,
     }))
 
     const dateObj = parse(date, 'yyyy-MM-dd', new Date())
@@ -281,6 +278,8 @@ export async function GET(request: NextRequest) {
           startTime: s.startTime,
           endTime: s.endTime,
           available: s.available,
+          staffId: staff.id,
+          staffName: staff.name,
         })),
         availableSlots,
         totalSlots,

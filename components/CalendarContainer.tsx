@@ -1,7 +1,6 @@
 // @ts-nocheck
 'use client';
 
-import { useState } from 'react';
 import {
   format,
   addWeeks,
@@ -12,7 +11,7 @@ import {
   subDays,
 } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WeekCalendar } from './WeekCalendar';
 import { DayCalendar } from './DayCalendar';
@@ -35,6 +34,8 @@ interface Staff {
 }
 
 interface CalendarContainerProps {
+  view: ViewType;
+  onViewChange: (view: ViewType) => void;
   currentDate: Date;
   setCurrentDate: (date: Date) => void;
   bookings: Booking[];
@@ -49,6 +50,8 @@ interface CalendarContainerProps {
 type ViewType = 'week' | 'day';
 
 export function CalendarContainer({
+  view,
+  onViewChange,
   currentDate,
   setCurrentDate,
   bookings,
@@ -59,8 +62,6 @@ export function CalendarContainer({
   staffMembers = [],
   onTimeSlotClick,
 }: CalendarContainerProps) {
-  const [view, setView] = useState<ViewType>('week');
-
   const handlePrevious = () => {
     if (view === 'week') {
       setCurrentDate(subWeeks(currentDate, 1));
@@ -112,7 +113,7 @@ export function CalendarContainer({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {/* Staff Filter */}
           {staffMembers.length > 0 && onStaffChange && (
-            <div className="flex gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
+            <div className="flex max-w-full flex-wrap gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
               <Button
                 variant={selectedStaff === 'all' ? 'default' : 'ghost'}
                 size="sm"
@@ -149,7 +150,7 @@ export function CalendarContainer({
             <Button
               variant={view === 'week' ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => setView('week')}
+              onClick={() => onViewChange('week')}
               className={`text-xs font-medium ${
                 view === 'week'
                   ? ''
@@ -161,7 +162,7 @@ export function CalendarContainer({
             <Button
               variant={view === 'day' ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => setView('day')}
+              onClick={() => onViewChange('day')}
               className={`text-xs font-medium ${
                 view === 'day'
                   ? ''

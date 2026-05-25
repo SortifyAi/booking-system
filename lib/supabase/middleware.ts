@@ -4,6 +4,19 @@ import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/lib/types/database.types";
 import { isMockMode } from "@/lib/utils/mock";
 
+const publicPaths = [
+  "/auth",
+  "/book",
+  "/api/availability",
+  "/api/bookings",
+  "/api/health",
+  "/api/public",
+];
+
+function isPublicPath(pathname: string) {
+  return publicPaths.some((path) => pathname.startsWith(path));
+}
+
 export async function updateSession(request: NextRequest) {
   if (isMockMode()) {
     return NextResponse.next({ request });
@@ -37,9 +50,7 @@ export async function updateSession(request: NextRequest) {
 
   if (
     !user &&
-    !request.nextUrl.pathname.startsWith("/auth") &&
-    !request.nextUrl.pathname.startsWith("/api/bookings") &&
-    !request.nextUrl.pathname.startsWith("/api/availability")
+    !isPublicPath(request.nextUrl.pathname)
   ) {
     // Redirect to login if not authenticated (except for public pages/APIs)
     const url = request.nextUrl.clone();

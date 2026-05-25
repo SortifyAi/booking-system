@@ -11,6 +11,7 @@ import {
   isSameDay,
 } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { getBookingDisplayParts } from '@/lib/calendar-admin';
 
 interface Booking {
   id: string;
@@ -21,6 +22,8 @@ interface Booking {
   status: string;
   location_id: string;
   staff_id?: string;
+  staff_name?: string;
+  staff_color?: string;
 }
 
 interface WeekCalendarProps {
@@ -30,32 +33,6 @@ interface WeekCalendarProps {
   endHour?: number;
   onTimeSlotClick?: (date: Date, hour: number) => void;
 }
-
-const getServiceColor = (service: string) => {
-  switch (service?.toLowerCase()) {
-    case 'haircut':
-      return 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700';
-    case 'massage':
-      return 'bg-green-100 dark:bg-green-900 border-green-300 dark:border-green-700';
-    case 'konsultation':
-      return 'bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700';
-    default:
-      return 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600';
-  }
-};
-
-const getServiceTextColor = (service: string) => {
-  switch (service?.toLowerCase()) {
-    case 'haircut':
-      return 'text-blue-800 dark:text-blue-100';
-    case 'massage':
-      return 'text-green-800 dark:text-green-100';
-    case 'konsultation':
-      return 'text-purple-800 dark:text-purple-100';
-    default:
-      return 'text-gray-800 dark:text-gray-100';
-  }
-};
 
 const staffColors: Record<string, string> = {
   'staff-anna': '#8B5CF6',
@@ -86,19 +63,6 @@ export function WeekCalendar({
         startTime.getHours() === hour
       );
     });
-  };
-
-  const calculateBookingStyle = (booking: Booking) => {
-    const startTime = new Date(booking.start_time);
-    const endTime = new Date(booking.end_time);
-    const hourRange = endHour - startHour;
-    const durationHours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-    const heightPercent = (durationHours / hourRange) * 100;
-    
-    return {
-      height: `${Math.max(8, heightPercent)}%`,
-      minHeight: '32px',
-    };
   };
 
   // Responsive: mobile 1 day, tablet 3 days, desktop 7 days
@@ -175,12 +139,12 @@ export function WeekCalendar({
         <div className="grid divide-x divide-gray-200 dark:divide-slate-800" style={{ gridTemplateColumns: `60px repeat(${visibleDays.length}, 1fr)` }}>
           {/* Time labels column */}
           <div className="bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800">
-            {hours.map((hour) => (
-              <div
-                key={hour}
-                className="relative border-b border-gray-100 dark:border-slate-800 px-2 py-2 text-right"
-                style={{ height: '48px' }}
-              >
+              {hours.map((hour) => (
+                <div
+                  key={hour}
+                  className="relative border-b border-gray-100 dark:border-slate-800 px-2 py-2 text-right"
+                  style={{ height: '72px' }}
+                >
                 <p className="text-xs font-medium text-gray-500 dark:text-slate-400">
                   {String(hour).padStart(2, '0')}:00
                 </p>
@@ -203,31 +167,36 @@ export function WeekCalendar({
                     className={`relative border-b border-gray-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer p-1 ${
                       isClickable ? 'hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-600' : ''
                     }`}
-                    style={{ height: '48px' }}
+                    style={{ minHeight: '72px' }}
                     onClick={() => isClickable && handleSlotClick(day, hour)}
                     title={isClickable ? 'Klicken um Termin zu erstellen' : undefined}
                   >
-                    {dayBookings.map((booking, idx) => (
-                      <div
-                        key={booking.id}
-                        className={`absolute left-1 right-1 rounded border p-1 text-xs font-medium shadow-sm overflow-hidden ${getServiceColor(
-                          booking.service
-                        )} ${getServiceTextColor(booking.service)}`}
-                        style={calculateBookingStyle(booking)}
-                        title={`${booking.guest_name} - ${booking.service}`}
-                      >
-                        <div className="truncate font-bold">{booking.guest_name}</div>
-                        <div className="truncate text-xs opacity-75">{booking.service}</div>
-                        {booking.staff_id && (
-                          <div 
-                            className="truncate text-xs mt-0.5"
-                            style={{ color: staffColors[booking.staff_id] || '#6B7280' }}
+                    <div className="space-y-1">
+                      {dayBookings.map((booking) => {
+                        const staffColor = booking.staff_color || staffColors[booking.staff_id] || '#60A5FA';
+                        const display = getBookingDisplayParts(booking);
+
+                        return (
+                          <div
+                            key={booking.id}
+                            className="min-h-12 rounded-md border border-slate-600/70 bg-slate-800/90 px-2 py-1.5 text-xs text-slate-100 shadow-sm"
+                            style={{ borderLeft: `4px solid ${staffColor}` }}
+                            title={`${booking.guest_name} - ${booking.service}`}
                           >
-                            {booking.staff_id.replace('staff-', '').charAt(0).toUpperCase() + booking.staff_id.replace('staff-', '').slice(1)}
+                            <div className="truncate font-semibold leading-tight">{display.title}</div>
+                            {display.staffLabel && (
+                              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
+                                <span
+                                  className="h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: staffColor }}
+                                />
+                                <span className="truncate">{display.staffLabel}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
@@ -236,21 +205,6 @@ export function WeekCalendar({
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-slate-400 p-2">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-blue-100 dark:bg-blue-900 rounded border border-blue-300 dark:border-blue-700"></div>
-          <span>Haircut</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-green-100 dark:bg-green-900 rounded border border-green-300 dark:border-green-700"></div>
-          <span>Massage</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-purple-100 dark:bg-purple-900 rounded border border-purple-300 dark:border-purple-700"></div>
-          <span>Konsultation</span>
-        </div>
-      </div>
     </div>
   );
 }
