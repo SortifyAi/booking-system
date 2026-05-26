@@ -405,7 +405,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
             ) : (
               <div className="space-y-3">
                 <button
-                  onClick={() => { setSelectedStaff(null); setStep(4) }}
+                  onClick={() => { setSelectedStaff(null); setLoading(true); setStep(4) }}
                   className="w-full p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 text-left hover:border-blue-500 transition-all"
                 >
                   <div className="flex items-center gap-3">
@@ -419,7 +419,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 {staffMembers.map((staff) => (
                   <button
                     key={staff.id}
-                    onClick={() => { setSelectedStaff(staff); setStep(4) }}
+                    onClick={() => { setSelectedStaff(staff); setLoading(true); setStep(4) }}
                     className={`w-full p-4 rounded-lg border-2 text-left transition-all hover:border-blue-500 ${
                       selectedStaff?.id === staff.id
                         ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
@@ -449,7 +449,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 onClick={() => {
                   const d = new Date(selectedDate)
                   d.setDate(d.getDate() - 1)
-                  if (d >= today) setSelectedDate(d)
+                  if (d >= today) { setLoading(true); setSelectedDate(d) }
                 }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
               >
@@ -462,6 +462,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 onClick={() => {
                   const d = new Date(selectedDate)
                   d.setDate(d.getDate() + 1)
+                  setLoading(true)
                   setSelectedDate(d)
                 }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
@@ -470,7 +471,14 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
               </button>
             </div>
             {loading ? (
-              <div className="text-center py-8 text-gray-500">Verfügbarkeit wird geladen...</div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-9 rounded-lg bg-gray-200 dark:bg-slate-700 animate-pulse"
+                  />
+                ))}
+              </div>
             ) : (
               <>
                 {fallbackReason && (

@@ -175,13 +175,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If resourceId is provided, validate it exists as active staff at the location.
-    // For the first production test, every active staff member can perform every offering.
-    if (resourceId) {
+    let finalResourceId: string | undefined = resourceId
+
+    if (finalResourceId) {
+      // Validate explicitly requested staff member
       const { data: resource, error: resError } = await client
         .from('resources')
         .select('id, type, location_id, is_active')
-        .eq('id', resourceId)
+        .eq('id', finalResourceId)
         .eq('type', 'staff')
         .eq('location_id', locationId)
         .eq('is_active', true)
@@ -193,19 +194,82 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         )
       }
+    } else {
+      // Auto-assign: pick the staff member with fewest bookings today who is free at the requested time
+      const { data: activeStaff, error: staffErr } = await client
+        .from('resources')
+        .select('id')
+        .eq('location_id', locationId)
+        .eq('type', 'staff')
+        .eq('is_active', true) as any
+
+      if (staffErr) throw staffErr
+
+      if (activeStaff && activeStaff.length > 0) {
+        const staffIds: string[] = activeStaff.map((s: any) => s.id)
+
+        const startDay = new Date(startTime)
+        startDay.setHours(0, 0, 0, 0)
+        const endDay = new Date(startTime)
+        endDay.setHours(23, 59, 59, 999)
+
+        // Count all bookings per staff for that day
+        const { data: dayBookings } = await client
+          .from('bookings')
+          .select('resource_id')
+          .eq('location_id', locationId)
+          .in('status', ['pending', 'confirmed'])
+          .gte('start_time', startDay.toISOString())
+          .lte('start_time', endDay.toISOString())
+          .in('resource_id', staffIds) as any
+
+        const bookingCount = new Map<string, number>()
+        staffIds.forEach((id: string) => bookingCount.set(id, 0))
+        ;(dayBookings || []).forEach((b: any) => {
+          if (b.resource_id) {
+            bookingCount.set(b.resource_id, (bookingCount.get(b.resource_id) ?? 0) + 1)
+          }
+        })
+
+        // Find staff members who already have a conflicting booking in this slot
+        const { data: slotConflicts } = await client
+          .from('bookings')
+          .select('resource_id')
+          .eq('location_id', locationId)
+          .in('status', ['pending', 'confirmed'])
+          .or(`and(start_time.lt.${endTime},end_time.gt.${startTime})`)
+          .in('resource_id', staffIds) as any
+
+        const busyIds = new Set<string>(
+          (slotConflicts || []).map((b: any) => b.resource_id).filter(Boolean)
+        )
+
+        // Sort free staff by booking count ascending, pick the one with fewest bookings
+        const freeStaff = staffIds
+          .filter((id: string) => !busyIds.has(id))
+          .sort((a: string, b: string) => (bookingCount.get(a) ?? 0) - (bookingCount.get(b) ?? 0))
+
+        if (freeStaff.length === 0) {
+          return NextResponse.json(
+            { error: 'Kein Mitarbeiter ist für diesen Zeitraum verfügbar' },
+            { status: 409 }
+          )
+        }
+
+        finalResourceId = freeStaff[0]
+      }
     }
 
-    // Check availability
+    // Check for conflict on the resolved staff member
     let conflictQuery = client
       .from('bookings')
       .select('id')
       .eq('location_id', locationId)
-      .eq('offering_id', offeringId)
       .in('status', ['pending', 'confirmed'])
       .or(`and(start_time.lt.${endTime},end_time.gt.${startTime})`)
 
-    if (resourceId) {
-      conflictQuery = conflictQuery.eq('resource_id', resourceId)
+    if (finalResourceId) {
+      conflictQuery = conflictQuery.eq('resource_id', finalResourceId)
     }
 
     const { data: conflictingBookings, error: conflictError } = await conflictQuery.limit(1)
@@ -213,7 +277,7 @@ export async function POST(request: NextRequest) {
     if (conflictError) throw conflictError
     if (conflictingBookings?.length) {
       return NextResponse.json(
-        { error: 'Time slot not available for selected staff member' },
+        { error: 'Zeitraum für diesen Mitarbeiter nicht mehr verfügbar' },
         { status: 409 }
       )
     }
@@ -225,7 +289,7 @@ export async function POST(request: NextRequest) {
         organization_id: finalOrganizationId,
         location_id: locationId,
         offering_id: offeringId,
-        resource_id: resourceId || null,
+        resource_id: finalResourceId || null,
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone || null,
@@ -233,7 +297,7 @@ export async function POST(request: NextRequest) {
         end_time: endTime,
         notes: notes || null,
         status: 'confirmed',
-        metadata: { staffAssigned: !!resourceId },
+        metadata: { staffAssigned: !!finalResourceId, autoAssigned: !resourceId && !!finalResourceId },
       })
       .select('*, resources(id, name, type)')
       .single() as any

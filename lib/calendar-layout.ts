@@ -1,0 +1,105 @@
+export interface CalendarLayoutBooking {
+  id: string;
+  start_time: string;
+  end_time: string;
+}
+
+export interface CalendarLayoutPosition {
+  column: number;
+  columns: number;
+}
+
+export interface CalendarTimeStyle {
+  top: number;
+  height: number;
+}
+
+const getTime = (value: string) => new Date(value).getTime();
+
+const overlaps = (first: CalendarLayoutBooking, second: CalendarLayoutBooking) => {
+  return getTime(first.start_time) < getTime(second.end_time)
+    && getTime(second.start_time) < getTime(first.end_time);
+};
+
+const sortBookings = (bookings: CalendarLayoutBooking[]) => {
+  return [...bookings].sort((first, second) => {
+    const startDiff = getTime(first.start_time) - getTime(second.start_time);
+    if (startDiff !== 0) return startDiff;
+
+    const endDiff = getTime(first.end_time) - getTime(second.end_time);
+    if (endDiff !== 0) return endDiff;
+
+    return first.id.localeCompare(second.id);
+  });
+};
+
+export function layoutOverlappingBookings(
+  bookings: CalendarLayoutBooking[],
+): Map<string, CalendarLayoutPosition> {
+  const groups: CalendarLayoutBooking[][] = [];
+
+  for (const booking of sortBookings(bookings)) {
+    const matchingIndexes = groups
+      .map((group, index) => ({ group, index }))
+      .filter(({ group }) => group.some((item) => overlaps(item, booking)))
+      .map(({ index }) => index);
+
+    if (matchingIndexes.length === 0) {
+      groups.push([booking]);
+      continue;
+    }
+
+    const targetIndex = matchingIndexes[0];
+    groups[targetIndex].push(booking);
+
+    for (const mergeIndex of matchingIndexes.slice(1).reverse()) {
+      groups[targetIndex].push(...groups[mergeIndex]);
+      groups.splice(mergeIndex, 1);
+    }
+  }
+
+  const positions = new Map<string, CalendarLayoutPosition>();
+
+  for (const group of groups) {
+    const sortedGroup = sortBookings(group);
+    const columnEndTimes: number[] = [];
+    const columnByBookingId = new Map<string, number>();
+
+    for (const booking of sortedGroup) {
+      const start = getTime(booking.start_time);
+      const end = getTime(booking.end_time);
+      const reusableColumn = columnEndTimes.findIndex((columnEnd) => columnEnd <= start);
+      const column = reusableColumn >= 0 ? reusableColumn : columnEndTimes.length;
+
+      columnEndTimes[column] = end;
+      columnByBookingId.set(booking.id, column);
+    }
+
+    const columns = Math.max(1, columnEndTimes.length);
+    for (const booking of sortedGroup) {
+      positions.set(booking.id, {
+        column: columnByBookingId.get(booking.id) ?? 0,
+        columns,
+      });
+    }
+  }
+
+  return positions;
+}
+
+export function getBookingTimeStyle(
+  booking: CalendarLayoutBooking,
+  startHour: number,
+  slotHeight: number,
+  minHeight: number,
+): CalendarTimeStyle {
+  const startTime = new Date(booking.start_time);
+  const endTime = new Date(booking.end_time);
+  const startOffsetMinutes = (startTime.getHours() - startHour) * 60 + startTime.getMinutes();
+  const durationMinutes = Math.max(15, (endTime.getTime() - startTime.getTime()) / 60000);
+
+  return {
+    top: Math.max(0, (startOffsetMinutes / 60) * slotHeight + 6),
+    height: Math.max(minHeight, (durationMinutes / 60) * slotHeight - 10),
+  };
+}

@@ -25,6 +25,9 @@ interface Booking {
   status: string;
   location_id: string;
   staff_id?: string;
+  resource_id?: string;
+  staff_name?: string;
+  staff_color?: string;
 }
 
 interface Staff {
@@ -44,7 +47,7 @@ interface CalendarContainerProps {
   selectedStaff?: string;
   onStaffChange?: (staffId: string) => void;
   staffMembers?: Staff[];
-  onTimeSlotClick?: (date: Date, hour: number) => void;
+  onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
 }
 
 type ViewType = 'week' | 'day';
@@ -227,6 +230,8 @@ export function CalendarContainer({
             bookings={bookings}
             startHour={startHour}
             endHour={endHour}
+            selectedStaff={selectedStaff}
+            staffMembers={staffMembers}
             onTimeSlotClick={onTimeSlotClick}
           />
         )}

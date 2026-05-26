@@ -62,6 +62,7 @@ export default function CalendarPage() {
   const [quickCreateData, setQuickCreateData] = useState<{
     date: Date;
     hour: number;
+    staffId?: string;
   } | null>(null);
   const [newBooking, setNewBooking] = useState({
     customer_name: '',
@@ -158,15 +159,28 @@ export default function CalendarPage() {
     ? bookings
     : bookings.filter((booking) => booking.staff_id === selectedStaff);
 
-  const handleQuickCreate = (date: Date, hour: number) => {
+  const handleQuickCreate = (date: Date, hour: number, staffId?: string) => {
     const selectedDate = new Date(date);
     selectedDate.setHours(hour, 0, 0, 0);
 
     const defaultOffering = offerings[0];
+    const defaultDuration = defaultOffering?.duration_minutes || 60;
     const defaultLocationId = defaultOffering?.location_id || locations[0]?.id || '';
-    const defaultStaffId = selectedStaff !== 'all' ? selectedStaff : staffMembers[0]?.id || '';
+    const slotEndTime = new Date(selectedDate.getTime() + defaultDuration * 60000);
+    const hasConflict = (memberId: string) => bookings.some((booking) => {
+      const bookingStaffId = booking.staff_id || booking.resource_id;
+      const bookingStart = new Date(booking.start_time);
+      const bookingEnd = new Date(booking.end_time);
 
-    setQuickCreateData({ date: selectedDate, hour });
+      return bookingStaffId === memberId
+        && selectedDate < bookingEnd
+        && bookingStart < slotEndTime;
+    });
+    const firstAvailableStaff = staffMembers.find((staff) => !hasConflict(staff.id));
+    const defaultStaffId = staffId
+      || (selectedStaff !== 'all' ? selectedStaff : firstAvailableStaff?.id || staffMembers[0]?.id || '');
+
+    setQuickCreateData({ date: selectedDate, hour, staffId: defaultStaffId });
     setNewBooking({
       customer_name: '',
       customer_email: '',
@@ -177,7 +191,7 @@ export default function CalendarPage() {
       staff_id: defaultStaffId,
       date: formatDateInput(selectedDate),
       time: formatTimeInput(selectedDate),
-      duration_minutes: defaultOffering?.duration_minutes || 60,
+      duration_minutes: defaultDuration,
       notes: '',
       status: 'confirmed',
     });
@@ -316,7 +330,12 @@ export default function CalendarPage() {
             <DialogTitle>Neue Buchung</DialogTitle>
             <DialogDescription>
               {quickCreateData && (
-                <>Termin am {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:00 Uhr</>
+                <>
+                  Termin am {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:00 Uhr
+                  {quickCreateData.staffId && (
+                    <> bei {staffMembers.find((staff) => staff.id === quickCreateData.staffId)?.name}</>
+                  )}
+                </>
               )}
             </DialogDescription>
           </DialogHeader>

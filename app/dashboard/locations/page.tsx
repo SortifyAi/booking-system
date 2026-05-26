@@ -27,6 +27,7 @@ interface Location {
   address: string | null;
   timezone: string;
   organization_id: string;
+  settings?: { openingHours?: any[] };
 }
 
 export default function LocationsPage() {
@@ -98,7 +99,7 @@ export default function LocationsPage() {
         address: formData.address,
         timezone: formData.timezone || 'UTC',
         organization_id: organizationId,
-        settings: {},
+        settings: { openingHours: formData.openingHours ?? [] },
       });
 
       if (error) throw error;
@@ -134,6 +135,7 @@ export default function LocationsPage() {
         name: formData.name,
         address: formData.address,
         timezone: formData.timezone,
+        settings: { openingHours: formData.openingHours ?? [] },
       }).eq('id', editingLocation.id);
 
       if (error) throw error;
@@ -269,7 +271,8 @@ export default function LocationsPage() {
             initialData={editingLocation ? {
               name: editingLocation.name,
               address: editingLocation.address || '',
-              timezone: editingLocation.timezone
+              timezone: editingLocation.timezone,
+              openingHours: editingLocation.settings?.openingHours,
             } : undefined}
           />
         </DialogContent>

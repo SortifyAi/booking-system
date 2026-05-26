@@ -12,6 +12,10 @@ import { de } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { getBookingDisplayParts } from '@/lib/calendar-admin';
+import {
+  getBookingTimeStyle,
+  layoutOverlappingBookings,
+} from '@/lib/calendar-layout';
 
 interface Booking {
   id: string;
@@ -26,12 +30,20 @@ interface Booking {
   staff_color?: string;
 }
 
+interface Staff {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface DayCalendarProps {
   currentDate: Date;
   bookings: Booking[];
   startHour?: number;
   endHour?: number;
-  onTimeSlotClick?: (date: Date, hour: number) => void;
+  selectedStaff?: string;
+  staffMembers?: Staff[];
+  onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
 }
 
 const staffColors: Record<string, string> = {
@@ -47,9 +59,12 @@ export function DayCalendar({
   bookings,
   startHour = 7,
   endHour = 20,
+  selectedStaff = 'all',
+  staffMembers = [],
   onTimeSlotClick,
 }: DayCalendarProps) {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
+  const bodyHeight = (endHour - startHour) * slotHeight;
 
   const dayBookings = bookings.filter((booking) => {
     const bookingDate = new Date(booking.start_time);
@@ -61,26 +76,23 @@ export function DayCalendar({
   const currentMinute = getMinutes(now);
   const showNowLine = isToday(currentDate) && currentHour >= startHour && currentHour < endHour;
 
-  const calculateBookingPosition = (booking: Booking) => {
-    const startTime = new Date(booking.start_time);
-    const endTime = new Date(booking.end_time);
-    const startHourOfDay = getHours(startTime);
-    const startMinOfDay = getMinutes(startTime);
-    const startOffsetHours = startHourOfDay - startHour + startMinOfDay / 60;
-    const durationHours = Math.max(
-      0.5,
-      (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)
-    );
+  const visibleStaff = selectedStaff === 'all'
+    ? staffMembers
+    : staffMembers.filter((staff) => staff.id === selectedStaff);
+  const staffColumns = visibleStaff.length > 0
+    ? visibleStaff
+    : [{ id: '', name: 'Alle Termine', color: '#60A5FA' }];
+  const minimumTimelineWidth = Math.max(760, 72 + staffColumns.length * 190);
+  const gridTemplateColumns = `72px repeat(${staffColumns.length}, minmax(170px, 1fr))`;
 
-    return {
-      top: `${startOffsetHours * slotHeight + 6}px`,
-      height: `${Math.max(54, durationHours * slotHeight - 12)}px`,
-    };
+  const getStaffBookings = (staffId: string) => {
+    if (!staffId) return dayBookings;
+    return dayBookings.filter((booking) => booking.staff_id === staffId || booking.resource_id === staffId);
   };
 
-  const handleSlotClick = (hour: number) => {
+  const handleSlotClick = (hour: number, staffId?: string) => {
     if (onTimeSlotClick) {
-      onTimeSlotClick(currentDate, hour);
+      onTimeSlotClick(currentDate, hour, staffId || undefined);
     }
   };
 
@@ -88,8 +100,9 @@ export function DayCalendar({
     const defaultHour = isToday(currentDate)
       ? Math.min(Math.max(currentHour + 1, startHour), endHour - 1)
       : startHour;
+    const defaultStaffId = selectedStaff !== 'all' ? selectedStaff : staffColumns[0]?.id || undefined;
 
-    handleSlotClick(defaultHour);
+    handleSlotClick(defaultHour, defaultStaffId);
   };
 
   return (
@@ -109,77 +122,118 @@ export function DayCalendar({
         </Button>
       </div>
 
-      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="relative" style={{ height: `${(endHour - startHour) * slotHeight}px` }}>
-          <div className="absolute bottom-0 left-0 top-0 w-16 border-r border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-800 sm:w-20">
-            {hours.map((hour) => (
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="min-w-full" style={{ minWidth: `${minimumTimelineWidth}px` }}>
+          <div
+            className="grid border-b border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-800"
+            style={{ gridTemplateColumns }}
+          >
+            <div className="border-r border-gray-200 px-3 py-3 text-xs font-semibold text-gray-600 dark:border-slate-800 dark:text-slate-400">
+              Zeit
+            </div>
+            {staffColumns.map((staff) => (
               <div
-                key={hour}
-                className="border-b border-gray-200 px-2 py-3 text-right dark:border-slate-800"
-                style={{ height: `${slotHeight}px` }}
+                key={staff.id || 'all'}
+                className="border-r border-gray-200 px-3 py-3 last:border-r-0 dark:border-slate-800"
               >
-                <p className="text-xs font-semibold text-gray-600 dark:text-slate-400 sm:text-sm">
-                  {String(hour).padStart(2, '0')}:00
-                </p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: staff.color }}
+                  />
+                  <span className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">
+                    {staff.name}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
 
-          <div className="relative ml-16 sm:ml-20">
-            {hours.map((hour) => (
-              <div
-                key={hour}
-                className="relative cursor-pointer border-b border-gray-100 transition-colors hover:bg-blue-50 dark:border-slate-800 dark:hover:bg-blue-500/10"
-                style={{ height: `${slotHeight}px` }}
-                onClick={() => handleSlotClick(hour)}
-                title="Klicken um Termin zu erstellen"
-              >
-                {showNowLine && currentHour === hour && (
-                  <div className="absolute left-0 right-0 z-20 h-0.5 bg-red-500">
-                    <div className="absolute -left-1 -top-1.5 h-3 w-3 rounded-full bg-red-500" />
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="relative grid" style={{ gridTemplateColumns }}>
+            <div className="border-r border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-800">
+              {hours.map((hour) => (
+                <div
+                  key={hour}
+                  className="border-b border-gray-200 px-2 py-3 text-right dark:border-slate-800"
+                  style={{ height: `${slotHeight}px` }}
+                >
+                  <p className="text-xs font-semibold text-gray-600 dark:text-slate-400 sm:text-sm">
+                    {String(hour).padStart(2, '0')}:00
+                  </p>
+                </div>
+              ))}
+            </div>
 
-            {dayBookings.map((booking) => {
-              const staffColor = booking.staff_color || staffColors[booking.staff_id] || '#60A5FA';
-              const display = getBookingDisplayParts(booking);
+            {staffColumns.map((staff) => {
+              const staffBookings = getStaffBookings(staff.id);
+              const layout = layoutOverlappingBookings(staffBookings);
 
               return (
                 <div
-                  key={booking.id}
-                  className="absolute left-2 right-2 z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-3 py-2 text-sm text-slate-100 shadow-sm"
-                  style={{
-                    ...calculateBookingPosition(booking),
-                    borderLeft: `5px solid ${staffColor}`,
-                  }}
-                  title={`${booking.guest_name} - ${booking.service}`}
+                  key={staff.id || 'all-column'}
+                  className="relative border-r border-gray-200 last:border-r-0 dark:border-slate-800"
+                  style={{ height: `${bodyHeight}px` }}
                 >
-                  <div className="flex h-full min-h-10 items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold leading-tight">{display.title}</div>
-                      {display.staffLabel && (
-                        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-300">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: staffColor }}
-                          />
-                          <span className="truncate">{display.staffLabel}</span>
+                  {hours.map((hour) => (
+                    <button
+                      key={`${staff.id || 'all'}-${hour}`}
+                      type="button"
+                      className="block w-full cursor-pointer border-b border-gray-100 text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:border-slate-800 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600"
+                      style={{ height: `${slotHeight}px` }}
+                      onClick={() => handleSlotClick(hour, staff.id || undefined)}
+                      title="Klicken um Termin zu erstellen"
+                    />
+                  ))}
+
+                  {staffBookings.map((booking) => {
+                    const staffColor = booking.staff_color || staff.color || staffColors[booking.staff_id] || '#60A5FA';
+                    const display = getBookingDisplayParts(booking);
+                    const position = layout.get(booking.id) || { column: 0, columns: 1 };
+                    const gap = 5;
+                    const width = `calc((100% - ${(position.columns - 1) * gap}px) / ${position.columns})`;
+                    const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
+                    const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 48);
+
+                    return (
+                      <div
+                        key={booking.id}
+                        className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2.5 py-2 text-sm text-slate-100 shadow-sm"
+                        style={{
+                          top: `${timeStyle.top}px`,
+                          height: `${timeStyle.height}px`,
+                          left,
+                          width,
+                          borderLeft: `5px solid ${staffColor}`,
+                        }}
+                        title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''}`}
+                      >
+                        <div className="flex h-full min-h-8 flex-col justify-between gap-1">
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold leading-tight">{display.title}</div>
+                            {display.staffLabel && selectedStaff === 'all' && (
+                              <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-300">
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{ backgroundColor: staffColor }}
+                                />
+                                <span className="truncate">{display.staffLabel}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-xs font-medium text-slate-400">
+                            {format(new Date(booking.start_time), 'HH:mm')}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="shrink-0 text-xs font-medium text-slate-400">
-                      {format(new Date(booking.start_time), 'HH:mm')}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
 
             {showNowLine && (
               <div
-                className="absolute left-0 right-0 z-20 h-0.5 bg-red-500 shadow-md"
+                className="pointer-events-none absolute left-[72px] right-0 z-20 h-0.5 bg-red-500 shadow-md"
                 style={{
                   top: `${((currentHour - startHour) + currentMinute / 60) * slotHeight}px`,
                 }}

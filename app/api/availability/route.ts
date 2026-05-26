@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/server/db'
 import { AvailabilitySlot } from '@/types/models'
 import { z } from 'zod'
 import { parse, addMinutes, format, setHours, setMinutes } from 'date-fns'
+import { BUSINESS_HOURS } from '@/lib/constants'
 
 const availabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -15,7 +16,7 @@ const availabilitySchema = z.object({
 async function calculateAvailability(input: z.infer<typeof availabilitySchema>) {
   const { locationId, offeringId, date, duration: customDuration } = input
 
-  const client = await createClient()
+  const client = getSupabaseAdmin()
 
   // Get offering to determine duration
   const { data: offering, error: offeringError } = await client
@@ -33,10 +34,10 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
 
   const durationMinutes = customDuration || offering.duration_minutes
 
-  // Get location timezone
+  // Get location (timezone + opening hours)
   const { data: location, error: locError } = await client
     .from('locations')
-    .select('timezone')
+    .select('timezone, settings')
     .eq('id', locationId)
     .single() as any
 
@@ -60,8 +61,20 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
 
   if (schedError) throw schedError
 
-  if (!schedules || schedules.length === 0) {
-    return NextResponse.json({ slots: [] })
+  // Fallback: Öffnungszeiten aus location.settings, sonst BUSINESS_HOURS
+  let effectiveSchedules
+  if (schedules && schedules.length > 0) {
+    effectiveSchedules = schedules
+  } else {
+    const openingHours: any[] = location.settings?.openingHours ?? []
+    const todayHours = openingHours.find((h: any) => h.day === dayOfWeek)
+    if (todayHours && !todayHours.closed && todayHours.open && todayHours.close) {
+      effectiveSchedules = [{ start_time: `${todayHours.open}:00`, end_time: `${todayHours.close}:00` }]
+    } else if (todayHours?.closed) {
+      return NextResponse.json({ slots: [] })
+    } else {
+      effectiveSchedules = [{ start_time: `${String(BUSINESS_HOURS.start).padStart(2, '0')}:00:00`, end_time: `${String(BUSINESS_HOURS.end).padStart(2, '0')}:00:00` }]
+    }
   }
 
   // Get existing bookings for the date
@@ -94,7 +107,7 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
   // Generate available slots
   const slots: AvailabilitySlot[] = []
 
-  for (const schedule of schedules) {
+  for (const schedule of effectiveSchedules) {
     // Parse schedule times
     const [startHour, startMin] = schedule.start_time.split(':').map(Number)
     const [endHour, endMin] = schedule.end_time.split(':').map(Number)

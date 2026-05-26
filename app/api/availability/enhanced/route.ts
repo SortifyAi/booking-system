@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/server/db'
 import { AvailabilitySlot } from '@/types/models'
 import { z } from 'zod'
 import { parse, addMinutes, format, setHours, setMinutes } from 'date-fns'
+import { BUSINESS_HOURS } from '@/lib/constants'
 
 const enhancedAvailabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
       duration: customDuration,
     } = validationResult.data
 
-    const client = await createClient()
+    const client = getSupabaseAdmin()
 
     // Get offering to determine duration
     const { data: offering, error: offeringError } = await client
@@ -108,10 +109,10 @@ export async function GET(request: NextRequest) {
 
     const durationMinutes = customDuration || offering.duration_minutes
 
-    // Get location timezone
+    // Get location (timezone, opening hours, org)
     const { data: location, error: locError } = await client
       .from('locations')
-      .select('timezone, organization_id')
+      .select('timezone, organization_id, settings')
       .eq('id', locationId)
       .single() as any
 
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
     const endOfDay = new Date(date)
     endOfDay.setHours(23, 59, 59, 999)
 
-    // Get existing bookings for all staff members
+    // Get existing bookings for all staff members (used for conflict checks)
     const { data: bookings, error: bookError } = await client
       .from('bookings')
       .select('start_time, end_time, resource_id')
@@ -187,6 +188,24 @@ export async function GET(request: NextRequest) {
 
     if (bookError) throw bookError
 
+    // Count total bookings per staff for the whole day (for load-balancing priority)
+    const { data: allDayBookings } = await client
+      .from('bookings')
+      .select('resource_id')
+      .eq('location_id', locationId)
+      .in('status', ['pending', 'confirmed'])
+      .gte('start_time', startOfDay.toISOString())
+      .lte('start_time', endOfDay.toISOString())
+      .in('resource_id', staffMembers.map(s => s.id)) as any
+
+    const bookingCountPerStaff = new Map<string, number>()
+    staffMembers.forEach((s: any) => bookingCountPerStaff.set(s.id, 0))
+    ;(allDayBookings || []).forEach((b: any) => {
+      if (b.resource_id) {
+        bookingCountPerStaff.set(b.resource_id, (bookingCountPerStaff.get(b.resource_id) ?? 0) + 1)
+      }
+    })
+
     // Get blocks for the date
     const { data: blocks, error: blockError } = await client
       .from('blocks')
@@ -196,6 +215,14 @@ export async function GET(request: NextRequest) {
 
     if (blockError) throw blockError
 
+    // Determine fallback schedule from location opening hours or BUSINESS_HOURS
+    const openingHours: any[] = location.settings?.openingHours ?? []
+    const todayHours = openingHours.find((h: any) => h.day === dayOfWeek)
+    const fallbackSchedule = todayHours && !todayHours.closed && todayHours.open && todayHours.close
+      ? { start_time: `${todayHours.open}:00`, end_time: `${todayHours.close}:00` }
+      : { start_time: `${String(BUSINESS_HOURS.start).padStart(2, '0')}:00:00`, end_time: `${String(BUSINESS_HOURS.end).padStart(2, '0')}:00:00` }
+    const locationClosedToday = todayHours?.closed === true
+
     // Helper function to generate slots for a staff member
     const generateSlotsForStaff = (
       staffMemberId: string,
@@ -204,9 +231,15 @@ export async function GET(request: NextRequest) {
     ): AvailabilitySlot[] => {
       const slots: AvailabilitySlot[] = []
 
-      if (!staffSchedules || staffSchedules.length === 0) return slots
+      if (locationClosedToday && (!staffSchedules || staffSchedules.length === 0)) return slots
 
-      for (const schedule of staffSchedules) {
+      // Fallback: wenn kein Schichtplan existiert, gelten die Öffnungszeiten
+      const effectiveSchedules =
+        staffSchedules && staffSchedules.length > 0
+          ? staffSchedules
+          : [{ ...fallbackSchedule, resource_id: staffMemberId }]
+
+      for (const schedule of effectiveSchedules) {
         const [startHour, startMin] = schedule.start_time.split(':').map(Number)
         const [endHour, endMin] = schedule.end_time.split(':').map(Number)
 
@@ -284,7 +317,7 @@ export async function GET(request: NextRequest) {
         availableSlots,
         totalSlots,
         utilizationRate: totalSlots > 0 ? ((totalSlots - availableSlots) / totalSlots) * 100 : 0,
-        priority: staff.priority,
+        priority: bookingCountPerStaff.get(staff.id) ?? 0,
       })
     }
 

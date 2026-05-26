@@ -12,6 +12,10 @@ import {
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { getBookingDisplayParts } from '@/lib/calendar-admin';
+import {
+  getBookingTimeStyle,
+  layoutOverlappingBookings,
+} from '@/lib/calendar-layout';
 
 interface Booking {
   id: string;
@@ -31,7 +35,7 @@ interface WeekCalendarProps {
   bookings: Booking[];
   startHour?: number;
   endHour?: number;
-  onTimeSlotClick?: (date: Date, hour: number) => void;
+  onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
 }
 
 const staffColors: Record<string, string> = {
@@ -50,19 +54,14 @@ export function WeekCalendar({
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
+  const slotHeight = 72;
+  const bodyHeight = (endHour - startHour) * slotHeight;
 
-  const getBookingsForDayAndHour = (day: Date, hour: number) => {
-    return bookings.filter((booking) => {
-      const startTime = new Date(booking.start_time);
-      const endTime = new Date(booking.end_time);
-
-      return (
-        isSameDay(day, startTime) &&
-        startTime.getHours() === hour
-      );
-    });
+  const getBookingsForDay = (day: Date) => {
+    return bookings
+      .filter((booking) => isSameDay(day, new Date(booking.start_time)))
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
   };
 
   // Responsive: mobile 1 day, tablet 3 days, desktop 7 days
@@ -84,7 +83,9 @@ export function WeekCalendar({
   // Start from today (or current week day) instead of always from Monday
   const today = new Date();
   const todayIndex = days.findIndex(day => isSameDay(day, today));
-  const startIndex = todayIndex >= 0 && todayIndex < visibleDaysCount ? todayIndex : 0;
+  const startIndex = visibleDaysCount === 7
+    ? 0
+    : Math.min(Math.max(todayIndex, 0), days.length - visibleDaysCount);
   const visibleDays = days.slice(startIndex, startIndex + visibleDaysCount);
 
   const handleSlotClick = (day: Date, hour: number) => {
@@ -143,7 +144,7 @@ export function WeekCalendar({
                 <div
                   key={hour}
                   className="relative border-b border-gray-100 dark:border-slate-800 px-2 py-2 text-right"
-                  style={{ height: '72px' }}
+                  style={{ height: `${slotHeight}px` }}
                 >
                 <p className="text-xs font-medium text-gray-500 dark:text-slate-400">
                   {String(hour).padStart(2, '0')}:00
@@ -153,55 +154,65 @@ export function WeekCalendar({
           </div>
 
           {/* Day columns */}
-          {visibleDays.map((day, dayIdx) => (
-            <div
-              key={day.toString()}
-              className="relative bg-white dark:bg-slate-900"
-            >
-              {hours.map((hour) => {
-                const dayBookings = getBookingsForDayAndHour(day, hour);
-                const isClickable = dayBookings.length === 0;
-                return (
-                  <div
-                    key={`${day}-${hour}`}
-                    className={`relative border-b border-gray-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer p-1 ${
-                      isClickable ? 'hover:ring-2 hover:ring-blue-300 dark:hover:ring-blue-600' : ''
-                    }`}
-                    style={{ minHeight: '72px' }}
-                    onClick={() => isClickable && handleSlotClick(day, hour)}
-                    title={isClickable ? 'Klicken um Termin zu erstellen' : undefined}
-                  >
-                    <div className="space-y-1">
-                      {dayBookings.map((booking) => {
-                        const staffColor = booking.staff_color || staffColors[booking.staff_id] || '#60A5FA';
-                        const display = getBookingDisplayParts(booking);
+          {visibleDays.map((day) => {
+            const dayBookings = getBookingsForDay(day);
+            const layout = layoutOverlappingBookings(dayBookings);
 
-                        return (
-                          <div
-                            key={booking.id}
-                            className="min-h-12 rounded-md border border-slate-600/70 bg-slate-800/90 px-2 py-1.5 text-xs text-slate-100 shadow-sm"
-                            style={{ borderLeft: `4px solid ${staffColor}` }}
-                            title={`${booking.guest_name} - ${booking.service}`}
-                          >
-                            <div className="truncate font-semibold leading-tight">{display.title}</div>
-                            {display.staffLabel && (
-                              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
-                                <span
-                                  className="h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: staffColor }}
-                                />
-                                <span className="truncate">{display.staffLabel}</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+            return (
+              <div
+                key={day.toString()}
+                className="relative bg-white dark:bg-slate-900"
+                style={{ height: `${bodyHeight}px` }}
+              >
+                {hours.map((hour) => (
+                  <button
+                    key={`${day}-${hour}`}
+                    type="button"
+                    className="block w-full cursor-pointer border-b border-gray-100 text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:border-slate-800 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600"
+                    style={{ height: `${slotHeight}px` }}
+                    onClick={() => handleSlotClick(day, hour)}
+                    title="Klicken um Termin zu erstellen"
+                  />
+                ))}
+
+                {dayBookings.map((booking) => {
+                  const staffColor = booking.staff_color || staffColors[booking.staff_id] || '#60A5FA';
+                  const display = getBookingDisplayParts(booking);
+                  const position = layout.get(booking.id) || { column: 0, columns: 1 };
+                  const gap = 4;
+                  const width = `calc((100% - ${(position.columns - 1) * gap}px) / ${position.columns})`;
+                  const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
+                  const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 40);
+
+                  return (
+                    <div
+                      key={booking.id}
+                      className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2 py-1.5 text-xs text-slate-100 shadow-sm"
+                      style={{
+                        top: `${timeStyle.top}px`,
+                        height: `${timeStyle.height}px`,
+                        left,
+                        width,
+                        borderLeft: `4px solid ${staffColor}`,
+                      }}
+                      title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''}`}
+                    >
+                      <div className="truncate font-semibold leading-tight">{display.title}</div>
+                      {display.staffLabel && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-slate-300">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: staffColor }}
+                          />
+                          <span className="truncate">{display.staffLabel}</span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 
