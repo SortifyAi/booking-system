@@ -26,7 +26,7 @@ export async function GET(
       offerings(name, duration_minutes, price_cents),
       locations(name, address),
       resources(name),
-      organizations(name, settings)
+      organizations(name, settings, logo_url)
     `)
     .eq('manage_token', token)
     .maybeSingle()
@@ -51,6 +51,7 @@ export async function GET(
       locationName: booking.locations?.name ?? null,
       locationAddress: booking.locations?.address ?? null,
       organizationName: booking.organizations?.name ?? null,
+      organizationLogoUrl: booking.organizations?.logo_url ?? null,
     },
     canCancel,
     cutoffHours,

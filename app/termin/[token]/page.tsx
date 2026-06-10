@@ -16,6 +16,7 @@ interface ManagedBooking {
   locationName: string | null
   locationAddress: string | null
   organizationName: string | null
+  organizationLogoUrl: string | null
 }
 
 export default function ManageBookingPage({ params }: { params: Promise<{ token: string }> }) {
@@ -112,9 +113,17 @@ export default function ManageBookingPage({ params }: { params: Promise<{ token:
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-slate-900 dark:to-slate-800">
       <div className="max-w-xl mx-auto px-4 py-10">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">
-            {booking.organizationName || 'Ihr Termin'}
-          </h1>
+          {booking.organizationLogoUrl ? (
+            <img
+              src={booking.organizationLogoUrl}
+              alt={`${booking.organizationName ?? ''} Logo`}
+              className="h-16 w-auto max-w-[200px] object-contain mx-auto mb-4"
+            />
+          ) : (
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">
+              {booking.organizationName || 'Ihr Termin'}
+            </h1>
+          )}
           <p className="text-gray-600 dark:text-gray-300">Terminübersicht</p>
         </div>
 

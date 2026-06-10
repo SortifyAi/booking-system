@@ -127,14 +127,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-slate-400">
-              Noch kein Konto?{' '}
-              <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-300">
-                Jetzt registrieren
-              </Link>
-            </p>
-          </div>
         </div>
         <p className="mt-6 text-center text-xs text-gray-500 dark:text-slate-500">
           © {new Date().getFullYear()} BookaNord
