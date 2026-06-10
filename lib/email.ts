@@ -33,6 +33,23 @@ function getFromAddress(organizationName: string): string {
   return `${safeName} <onboarding@resend.dev>`
 }
 
+/**
+ * Reply-To address. Spam filters (esp. Outlook) treat a deliverable Reply-To
+ * more favourably than a bare "noreply" From. Priority:
+ *   1. EMAIL_REPLY_TO (explicit)
+ *   2. the email part of EMAIL_FROM / EMAIL_DOMAIN
+ *   3. none
+ */
+function getReplyTo(): string | undefined {
+  if (process.env.EMAIL_REPLY_TO) return process.env.EMAIL_REPLY_TO
+  if (process.env.EMAIL_FROM) {
+    const match = process.env.EMAIL_FROM.match(/<([^>]+)>/)
+    return match ? match[1] : process.env.EMAIL_FROM
+  }
+  if (process.env.EMAIL_DOMAIN) return `termine@${process.env.EMAIL_DOMAIN}`
+  return undefined
+}
+
 interface BookingEmailData {
   customerName: string
   customerEmail: string
@@ -106,7 +123,8 @@ async function sendAndLog(
   data: BookingEmailData,
   type: NotificationType,
   subject: string,
-  html: string
+  html: string,
+  text: string
 ) {
   if (!isEmailConfigured()) {
     console.warn(
@@ -124,11 +142,14 @@ async function sendAndLog(
   }
 
   try {
+    const replyTo = getReplyTo()
     const { data: result, error } = await resend.emails.send({
       from: getFromAddress(data.organizationName),
       to: data.customerEmail,
+      ...(replyTo ? { replyTo } : {}),
       subject,
       html,
+      text,
     })
 
     if (error) {
@@ -175,6 +196,41 @@ const emailFooter = (organizationName: string) => `
   </p>
 `
 
+/**
+ * Plain-text counterpart of an email. A text/plain alternative alongside the
+ * HTML markedly improves deliverability (spam filters distrust HTML-only mail).
+ */
+function buildPlainText(opts: {
+  heading: string
+  intro: string
+  data: BookingEmailData
+  manageUrl?: string
+  closing?: string
+}): string {
+  const { heading, intro, data, manageUrl, closing } = opts
+  const lines = [
+    heading,
+    '',
+    `Hallo ${data.customerName},`,
+    '',
+    intro,
+    '',
+    `Service: ${data.offeringName}`,
+    `Datum: ${formatDateDE(data.startTime)}`,
+    `Uhrzeit: ${formatTimeDE(data.startTime)} Uhr`,
+    `Ort: ${data.locationName}${data.locationAddress ? `, ${data.locationAddress}` : ''}`,
+  ]
+  if (manageUrl) {
+    lines.push(
+      '',
+      'Termin verwalten oder stornieren:',
+      manageUrl
+    )
+  }
+  lines.push('', closing || 'Wir freuen uns auf Sie!', '', data.organizationName, 'Diese E-Mail wurde automatisch generiert.')
+  return lines.join('\n')
+}
+
 const manageBlock = (manageUrl?: string) =>
   manageUrl
     ? `
@@ -212,11 +268,19 @@ export async function sendBookingConfirmation(data: BookingEmailData) {
     </div>
   `
 
+  const text = buildPlainText({
+    heading: 'Terminbestätigung',
+    intro: 'Ihre Buchung wurde bestätigt:',
+    data,
+    manageUrl: data.manageUrl,
+  })
+
   return sendAndLog(
     data,
     'confirmation',
     `Bestätigung: Ihr Termin am ${formattedDate}`,
-    html
+    html,
+    text
   )
 }
 
@@ -248,11 +312,19 @@ export async function sendBookingCancellation(data: BookingEmailData) {
     </div>
   `
 
+  const text = buildPlainText({
+    heading: 'Termin storniert',
+    intro: 'Ihr folgender Termin wurde storniert:',
+    data,
+    closing: 'Buchen Sie jederzeit gerne einen neuen Termin.',
+  })
+
   return sendAndLog(
     data,
     'cancellation',
     `Stornierung: Ihr Termin am ${formattedDate}`,
-    html
+    html,
+    text
   )
 }
 
@@ -281,11 +353,19 @@ export async function sendBookingReminder(data: BookingEmailData) {
     </div>
   `
 
+  const text = buildPlainText({
+    heading: 'Terminerinnerung',
+    intro: 'wir möchten Sie an Ihren bevorstehenden Termin erinnern:',
+    data,
+    manageUrl: data.manageUrl,
+  })
+
   return sendAndLog(
     data,
     'reminder',
     `Erinnerung: Ihr Termin am ${formattedDate} bei ${data.organizationName}`,
-    html
+    html,
+    text
   )
 }
 
