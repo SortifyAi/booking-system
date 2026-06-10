@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { isMockMode } from '@/lib/utils/mock';
+import { Logo } from '@/components/Logo';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -59,14 +60,21 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-gray-50 px-4 dark:from-slate-950 dark:to-slate-900">
-      <div className="w-full max-w-md">
-        <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h1 className="mb-2 text-center text-2xl font-bold text-gray-900 dark:text-slate-100">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-blue-50/40 to-indigo-50 px-4 py-10 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/30">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(circle_at_80%_90%,rgba(99,102,241,0.10),transparent_55%)]"
+      />
+      <div className="relative w-full max-w-md">
+        <div className="mb-6 flex justify-center">
+          <Logo size="lg" />
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white/90 p-8 shadow-xl shadow-blue-500/5 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80">
+          <h1 className="text-center text-2xl font-bold tracking-tight text-gray-900 dark:text-slate-100">
             Konto erstellen
           </h1>
-          <p className="mb-6 text-center text-sm text-gray-600 dark:text-slate-400">
-            Registrieren Sie sich, um loszulegen
+          <p className="mt-1.5 mb-6 text-center text-sm text-gray-600 dark:text-slate-400">
+            In wenigen Sekunden startklar mit BookaNord.
           </p>
 
           <form onSubmit={handleSignup} className="space-y-4">
@@ -131,13 +139,16 @@ export default function SignupPage() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600 dark:text-slate-400">
-              Haben Sie bereits ein Konto?{' '}
+              Bereits ein Konto?{' '}
               <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-300">
                 Anmelden
               </Link>
             </p>
           </div>
         </div>
+        <p className="mt-6 text-center text-xs text-gray-500 dark:text-slate-500">
+          © {new Date().getFullYear()} BookaNord
+        </p>
       </div>
     </div>
   );

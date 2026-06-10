@@ -35,7 +35,7 @@ export function StaffBookingInterface({
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null)
   const [selectedStaffName, setSelectedStaffName] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split('T')[0]
+    format(new Date(), 'yyyy-MM-dd')
   )
   const [bookingFormData, setBookingFormData] = useState({
     customerName: '',

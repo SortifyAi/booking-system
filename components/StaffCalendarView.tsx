@@ -38,7 +38,7 @@ export function StaffCalendarView({
   locationId,
   offeringId,
   selectedStaffId = null,
-  date = new Date().toISOString().split('T')[0],
+  date = format(new Date(), 'yyyy-MM-dd'),
   onSlotSelect,
 }: StaffCalendarViewProps) {
   const [staffAvailabilities, setStaffAvailabilities] = useState<StaffAvailability[]>([])

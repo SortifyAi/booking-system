@@ -14,6 +14,7 @@ import { Plus } from 'lucide-react';
 import { getBookingDisplayParts } from '@/lib/calendar-admin';
 import {
   getBookingTimeStyle,
+  getMaximumParallelBookings,
   layoutOverlappingBookings,
 } from '@/lib/calendar-layout';
 
@@ -52,7 +53,7 @@ const staffColors: Record<string, string> = {
   'staff-sophie': '#10B981',
 };
 
-const slotHeight = 88;
+const slotHeight = 76;
 
 export function DayCalendar({
   currentDate,
@@ -82,13 +83,21 @@ export function DayCalendar({
   const staffColumns = visibleStaff.length > 0
     ? visibleStaff
     : [{ id: '', name: 'Alle Termine', color: '#60A5FA' }];
-  const minimumTimelineWidth = Math.max(760, 72 + staffColumns.length * 190);
-  const gridTemplateColumns = `72px repeat(${staffColumns.length}, minmax(170px, 1fr))`;
 
   const getStaffBookings = (staffId: string) => {
     if (!staffId) return dayBookings;
     return dayBookings.filter((booking) => booking.staff_id === staffId || booking.resource_id === staffId);
   };
+
+  const staffColumnWidths = staffColumns.map((staff) => {
+    const maxParallelBookings = getMaximumParallelBookings(getStaffBookings(staff.id));
+    return Math.max(150, maxParallelBookings * 104 + (maxParallelBookings - 1) * 5);
+  });
+  const minimumTimelineWidth = Math.max(
+    320,
+    56 + staffColumnWidths.reduce((total, width) => total + width, 0),
+  );
+  const gridTemplateColumns = `56px ${staffColumnWidths.map((width) => `minmax(${width}px, 1fr)`).join(' ')}`;
 
   const handleSlotClick = (hour: number, staffId?: string) => {
     if (onTimeSlotClick) {
@@ -105,11 +114,15 @@ export function DayCalendar({
     handleSlotClick(defaultHour, defaultStaffId);
   };
 
+  const getBookingStaff = (booking: Booking) => {
+    return staffMembers.find((staff) => staff.id === booking.staff_id || staff.id === booking.resource_id);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100 sm:text-2xl">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100 sm:text-2xl">
             {format(currentDate, 'EEEE, d. MMMM yyyy', { locale: de })}
           </h2>
           <p className="mt-1 text-xs text-gray-600 dark:text-slate-400 sm:text-sm">
@@ -122,19 +135,65 @@ export function DayCalendar({
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="space-y-2 sm:hidden">
+        {dayBookings.length > 0 ? (
+          dayBookings.map((booking) => {
+            const display = getBookingDisplayParts(booking);
+            const staff = getBookingStaff(booking);
+            const staffColor = booking.staff_color || staff?.color || staffColors[booking.staff_id] || '#60A5FA';
+
+            return (
+              <div
+                key={booking.id}
+                className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                style={{ borderLeft: `5px solid ${staffColor}` }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">
+                      {display.title}
+                    </p>
+                    <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-gray-600 dark:text-slate-400">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: staffColor }}
+                      />
+                      <span className="truncate">{display.staffLabel || staff?.name || 'Ohne Mitarbeiter'}</span>
+                    </div>
+                    {booking.service && (
+                      <p className="mt-1 truncate text-xs text-gray-500 dark:text-slate-500">
+                        {booking.service}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 dark:bg-slate-800 dark:text-slate-300">
+                    {format(new Date(booking.start_time), 'HH:mm')}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            <p className="text-base font-medium">Keine Buchungen heute</p>
+            <p className="mt-1 text-sm">Erstelle eine neue Buchung mit dem Button oben</p>
+          </div>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:block">
         <div className="min-w-full" style={{ minWidth: `${minimumTimelineWidth}px` }}>
           <div
             className="grid border-b border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-800"
             style={{ gridTemplateColumns }}
           >
-            <div className="border-r border-gray-200 px-3 py-3 text-xs font-semibold text-gray-600 dark:border-slate-800 dark:text-slate-400">
+            <div className="border-r border-gray-200 px-1.5 py-3 text-xs font-semibold text-gray-600 dark:border-slate-800 dark:text-slate-400 sm:px-3">
               Zeit
             </div>
             {staffColumns.map((staff) => (
               <div
                 key={staff.id || 'all'}
-                className="border-r border-gray-200 px-3 py-3 last:border-r-0 dark:border-slate-800"
+                className="border-r border-gray-200 px-2 py-3 last:border-r-0 dark:border-slate-800 sm:px-3"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
@@ -154,7 +213,7 @@ export function DayCalendar({
               {hours.map((hour) => (
                 <div
                   key={hour}
-                  className="border-b border-gray-200 px-2 py-3 text-right dark:border-slate-800"
+                  className="border-b border-gray-200 px-1.5 py-3 text-right dark:border-slate-800 sm:px-2"
                   style={{ height: `${slotHeight}px` }}
                 >
                   <p className="text-xs font-semibold text-gray-600 dark:text-slate-400 sm:text-sm">
@@ -193,11 +252,12 @@ export function DayCalendar({
                     const width = `calc((100% - ${(position.columns - 1) * gap}px) / ${position.columns})`;
                     const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
                     const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 48);
+                    const isCompactBooking = position.columns >= 3 || timeStyle.height < 58;
 
                     return (
                       <div
                         key={booking.id}
-                        className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2.5 py-2 text-sm text-slate-100 shadow-sm"
+                        className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2 py-1.5 text-xs text-slate-100 shadow-sm sm:px-2.5 sm:py-2 sm:text-sm"
                         style={{
                           top: `${timeStyle.top}px`,
                           height: `${timeStyle.height}px`,
@@ -210,8 +270,8 @@ export function DayCalendar({
                         <div className="flex h-full min-h-8 flex-col justify-between gap-1">
                           <div className="min-w-0">
                             <div className="truncate font-semibold leading-tight">{display.title}</div>
-                            {display.staffLabel && selectedStaff === 'all' && (
-                              <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-300">
+                            {display.staffLabel && selectedStaff === 'all' && !isCompactBooking && (
+                              <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-slate-300 sm:text-xs">
                                 <span
                                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                                   style={{ backgroundColor: staffColor }}
@@ -246,7 +306,7 @@ export function DayCalendar({
       </div>
 
       {dayBookings.length === 0 && (
-        <div className="text-center py-12 text-gray-600 dark:text-slate-400">
+        <div className="hidden py-8 text-center text-gray-600 dark:text-slate-400 sm:block sm:py-12">
           <p className="text-lg font-medium mb-2">Keine Buchungen heute</p>
           <p className="text-sm">Erstelle eine neue Buchung mit dem Button oben</p>
         </div>

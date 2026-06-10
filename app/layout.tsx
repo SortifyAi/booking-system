@@ -3,8 +3,13 @@ import '@/styles/globals.css'
 import { Providers } from '@/components/Providers'
 
 export const metadata: Metadata = {
-  title: 'Booking System',
-  description: 'A modern booking system built with Next.js',
+  title: 'BookaNord',
+  description: 'BookaNord – das moderne Buchungssystem für Teams im Norden.',
+  icons: {
+    icon: '/brand/bookanord-mark.png',
+    shortcut: '/brand/bookanord-mark.png',
+    apple: '/brand/bookanord-mark.png',
+  },
 }
 
 export default function RootLayout({

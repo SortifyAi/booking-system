@@ -127,9 +127,11 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-slate-100">Übersicht</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-slate-100">
+          Übersicht
+        </h1>
         <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">
-          Willkommen in deinem Buchungssystem Dashboard
+          Willkommen zurück bei BookaNord – hier ist deine aktuelle Auslastung.
         </p>
       </div>
 
@@ -147,32 +149,38 @@ export default function DashboardPage() {
           <StatCard
             label="Gesamte Buchungen"
             value={stats.totalBookings}
-            icon={<Calendar className="h-8 w-8" />}
+            icon={<Calendar className="h-5 w-5" />}
+            tone="blue"
           />
           <StatCard
             label="Standorte"
             value={stats.totalLocations}
-            icon={<MapPin className="h-8 w-8" />}
+            icon={<MapPin className="h-5 w-5" />}
+            tone="violet"
           />
           <StatCard
             label="Anstehend"
             value={stats.upcomingBookings}
-            icon={<Users className="h-8 w-8" />}
+            icon={<Users className="h-5 w-5" />}
+            tone="amber"
           />
           <StatCard
             label="Ø pro Standort"
             value={stats.bookingRate}
-            icon={<TrendingUp className="h-8 w-8" />}
+            icon={<TrendingUp className="h-5 w-5" />}
+            tone="emerald"
           />
           <StatCard
             label="Leistungen"
             value={stats.totalOfferings}
-            icon={<Briefcase className="h-8 w-8" />}
+            icon={<Briefcase className="h-5 w-5" />}
+            tone="rose"
           />
           <StatCard
             label="Ressourcen"
             value={stats.totalResources}
-            icon={<UserCheck className="h-8 w-8" />}
+            icon={<UserCheck className="h-5 w-5" />}
+            tone="slate"
           />
         </div>
       )}

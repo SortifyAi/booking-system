@@ -7,11 +7,15 @@ import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { Calendar, Clock, User, MapPin, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
+import { getShowPrices, getShowDuration } from '@/lib/booking-policy'
+import { format } from 'date-fns'
 
 interface OrgInfo {
   id: string
   name: string
   slug: string
+  logo_url?: string | null
+  settings?: Record<string, unknown> | null
 }
 
 interface Location {
@@ -63,6 +67,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [fallbackSlot, setFallbackSlot] = useState<TimeSlot | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [manageUrl, setManageUrl] = useState<string | null>(null)
 
   const [customerName, setCustomerName] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
@@ -182,7 +187,9 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
     setFallbackReason(null)
     setFallbackSlot(null)
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0]
+      // Local calendar date (NOT toISOString, which is UTC and shifts the day
+      // late in the evening for Europe/Berlin → wrong/missing slots).
+      const dateStr = format(selectedDate, 'yyyy-MM-dd')
       if (selectedStaff) {
         const params = new URLSearchParams({
           locationId: selectedLocation!.id,
@@ -253,6 +260,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Booking failed')
+      setManageUrl(result.manageUrl || null)
       toast.success('Buchung erfolgreich! Wir bestätigen per E-Mail.')
       setStep(6)
     } catch {
@@ -296,9 +304,17 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-slate-900 dark:to-slate-800">
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            {org?.name}
-          </h1>
+          {org?.logo_url ? (
+            <img
+              src={org.logo_url}
+              alt={`${org.name} Logo`}
+              className="h-16 w-auto max-w-[200px] object-contain mx-auto mb-4"
+            />
+          ) : (
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              {org?.name}
+            </h1>
+          )}
           <p className="text-gray-600 dark:text-gray-300">
             Termin online buchen
           </p>
@@ -363,31 +379,44 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
               <div className="text-center py-8 text-gray-500">Laden...</div>
             ) : (
               <div className="space-y-3">
-                {offerings.map((offering) => (
-                  <button
-                    key={offering.id}
-                    onClick={() => { setSelectedOffering(offering); setStep(3) }}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-all hover:border-blue-500 ${
-                      selectedOffering?.id === offering.id
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: offering.color }} />
-                        <div>
-                          <div className="font-medium dark:text-white">{offering.name}</div>
-                          <div className="text-sm text-gray-500">{offering.description}</div>
+                {offerings.map((offering) => {
+                  const showPrice = getShowPrices(org?.settings)
+                  const showDur = getShowDuration(org?.settings)
+                  const hasMeta = showPrice || showDur
+                  return (
+                    <button
+                      key={offering.id}
+                      onClick={() => { setSelectedOffering(offering); setStep(3) }}
+                      className={`w-full p-4 rounded-lg border-2 text-left transition-all hover:border-blue-500 ${
+                        selectedOffering?.id === offering.id
+                          ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: offering.color }} />
+                          <div>
+                            <div className="font-medium dark:text-white">{offering.name}</div>
+                            {offering.description && (
+                              <div className="text-sm text-gray-500">{offering.description}</div>
+                            )}
+                          </div>
                         </div>
+                        {hasMeta && (
+                          <div className="text-right shrink-0 ml-4">
+                            {showPrice && (
+                              <div className="font-semibold dark:text-white">{formatPrice(offering.price_cents)}</div>
+                            )}
+                            {showDur && (
+                              <div className="text-sm text-gray-500">{offering.duration_minutes} Min.</div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <div className="font-semibold dark:text-white">{formatPrice(offering.price_cents)}</div>
-                        <div className="text-sm text-gray-500">{offering.duration_minutes} Min.</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -572,7 +601,9 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                   <p><span className="font-medium">Mitarbeiter:</span> {selectedStaff?.name || selectedSlot?.staffName || 'Keine Präferenz'}</p>
                   <p><span className="font-medium">Datum:</span> {selectedDate.toLocaleDateString('de-DE')}</p>
                   <p><span className="font-medium">Uhrzeit:</span> {selectedSlot && formatTime(selectedSlot.startTime)}</p>
-                  <p><span className="font-medium">Preis:</span> {selectedOffering && formatPrice(selectedOffering.price_cents)}</p>
+                  {getShowPrices(org?.settings) && (
+                    <p><span className="font-medium">Preis:</span> {selectedOffering && formatPrice(selectedOffering.price_cents)}</p>
+                  )}
                 </div>
               </div>
               <Button onClick={handleSubmit} disabled={submitting || !customerName || !customerEmail} className="w-full">
@@ -592,6 +623,16 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
             <p className="text-gray-600 dark:text-gray-300 mb-6">
               Vielen Dank für Ihre Buchung. Sie erhalten in Kürze eine Bestätigung per E-Mail.
             </p>
+            {manageUrl && (
+              <div className="mb-6 rounded-lg border border-gray-200 dark:border-slate-700 p-4 text-sm">
+                <p className="text-gray-600 dark:text-gray-300 mb-2">
+                  Falls Sie den Termin absagen müssen, nutzen Sie diesen Link:
+                </p>
+                <a href={manageUrl} className="text-blue-600 dark:text-blue-400 font-medium underline break-all">
+                  Termin verwalten / stornieren
+                </a>
+              </div>
+            )}
             <Button onClick={() => window.location.reload()}>Neuen Termin buchen</Button>
           </div>
         )}

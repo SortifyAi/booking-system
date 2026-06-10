@@ -33,6 +33,30 @@ const sortBookings = (bookings: CalendarLayoutBooking[]) => {
   });
 };
 
+export function getMaximumParallelBookings(bookings: CalendarLayoutBooking[]) {
+  const timeline = bookings.flatMap((booking) => [
+    { time: getTime(booking.start_time), delta: 1 },
+    { time: getTime(booking.end_time), delta: -1 },
+  ]);
+
+  timeline.sort((first, second) => {
+    const timeDiff = first.time - second.time;
+    if (timeDiff !== 0) return timeDiff;
+
+    return first.delta - second.delta;
+  });
+
+  let activeBookings = 0;
+  let maximumParallelBookings = 0;
+
+  for (const point of timeline) {
+    activeBookings += point.delta;
+    maximumParallelBookings = Math.max(maximumParallelBookings, activeBookings);
+  }
+
+  return Math.max(1, maximumParallelBookings);
+}
+
 export function layoutOverlappingBookings(
   bookings: CalendarLayoutBooking[],
 ): Map<string, CalendarLayoutPosition> {

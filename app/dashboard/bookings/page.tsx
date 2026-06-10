@@ -157,7 +157,7 @@ export default function BookingsPage() {
     if (!formDate || !formTime) {
       const now = new Date();
       now.setHours(now.getHours() + 1, 0, 0, 0);
-      setFormDate(now.toISOString().split('T')[0]);
+      setFormDate(format(now, 'yyyy-MM-dd'));
       setFormTime(now.toTimeString().slice(0, 5));
     }
   }, [locations, offerings]);
@@ -240,7 +240,7 @@ export default function BookingsPage() {
     // Default: heute + 1 Stunde
     const now = new Date();
     now.setHours(now.getHours() + 1, 0, 0, 0);
-    setFormDate(now.toISOString().split('T')[0]);
+    setFormDate(format(now, 'yyyy-MM-dd'));
     setFormTime(now.toTimeString().slice(0, 5));
     setFormCustomerName('');
     setFormCustomerEmail('');

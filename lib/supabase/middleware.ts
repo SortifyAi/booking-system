@@ -7,6 +7,7 @@ import { isMockMode } from "@/lib/utils/mock";
 const publicPaths = [
   "/auth",
   "/book",
+  "/termin",
   "/api/availability",
   "/api/bookings",
   "/api/health",

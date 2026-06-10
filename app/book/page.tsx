@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { Calendar, Clock, User, Scissors, MapPin, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
+import { format } from 'date-fns'
 
 interface Location {
   id: string
@@ -198,7 +199,9 @@ export default function BookPage() {
     setFallbackReason(null)
     setFallbackSlot(null)
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0]
+      // Local calendar date (NOT toISOString, which is UTC and shifts the day
+      // late in the evening for Europe/Berlin → wrong/missing slots).
+      const dateStr = format(selectedDate, 'yyyy-MM-dd')
       if (selectedStaff) {
         const params = new URLSearchParams({
           locationId: selectedLocation!.id,

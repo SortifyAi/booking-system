@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import { StatCard } from '@/components/StatCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { toast } from 'sonner'
@@ -29,7 +30,7 @@ interface StaffDashboardProps {
 export function StaffDashboard({
   locationId,
   offeringId,
-  date = new Date().toISOString().split('T')[0],
+  date = format(new Date(), 'yyyy-MM-dd'),
 }: StaffDashboardProps) {
   const [stats, setStats] = useState<StaffDashboardStats | null>(null)
   const [loading, setLoading] = useState(true)

@@ -325,7 +325,7 @@ export default function CalendarPage() {
       />
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]">
+        <DialogContent className="max-h-[92vh] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>Neue Buchung</DialogTitle>
             <DialogDescription>
@@ -493,10 +493,10 @@ export default function CalendarPage() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsModalOpen(false)}>
               Abbrechen
             </Button>
-            <Button onClick={handleSaveQuickBooking} disabled={submitting || staffMembers.length === 0}>
+            <Button className="w-full sm:w-auto" onClick={handleSaveQuickBooking} disabled={submitting || staffMembers.length === 0}>
               {submitting ? 'Speichert...' : 'Termin speichern'}
             </Button>
           </DialogFooter>

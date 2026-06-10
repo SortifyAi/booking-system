@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { z } from 'zod'
+import { generateManageToken, buildManageUrl } from '@/lib/booking-token'
+import { sendBookingConfirmation } from '@/lib/email'
 
 const createEnhancedBookingSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -282,6 +284,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Secret token so the customer can manage/cancel this booking without login
+    const manageToken = generateManageToken()
+
     // Create booking with resource_id
     const { data: booking, error: createError } = await client
       .from('bookings')
@@ -297,14 +302,39 @@ export async function POST(request: NextRequest) {
         end_time: endTime,
         notes: notes || null,
         status: 'confirmed',
+        manage_token: manageToken,
         metadata: { staffAssigned: !!finalResourceId, autoAssigned: !resourceId && !!finalResourceId },
       })
-      .select('*, resources(id, name, type)')
+      .select('*, resources(id, name, type), offerings(name), locations(name, address), organizations(name)')
       .single() as any
 
     if (createError) throw createError
 
-    return NextResponse.json(booking, { status: 201 })
+    const manageUrl = buildManageUrl(manageToken)
+
+    // Send confirmation email (non-blocking: never fail the booking on email).
+    try {
+      await sendBookingConfirmation({
+        customerName,
+        customerEmail,
+        offeringName: booking.offerings?.name || 'Service',
+        locationName: booking.locations?.name || 'Standort',
+        locationAddress: booking.locations?.address || '',
+        startTime,
+        endTime,
+        organizationName: booking.organizations?.name || 'Terminbuchung',
+        manageUrl,
+        organizationId: finalOrganizationId,
+        bookingId: booking.id,
+      })
+    } catch (emailError) {
+      console.error('Failed to send confirmation email:', emailError)
+    }
+
+    return NextResponse.json(
+      { ...booking, manageToken, manageUrl },
+      { status: 201 }
+    )
   } catch (error) {
     console.error('Error creating enhanced booking:', error)
     return NextResponse.json(

@@ -14,8 +14,13 @@ import { de } from 'date-fns/locale';
 import { getBookingDisplayParts } from '@/lib/calendar-admin';
 import {
   getBookingTimeStyle,
+  getMaximumParallelBookings,
   layoutOverlappingBookings,
 } from '@/lib/calendar-layout';
+import {
+  getResponsiveWeekDayCount,
+  getVisibleWeekDays,
+} from '@/lib/calendar-responsive';
 
 interface Booking {
   id: string;
@@ -55,8 +60,18 @@ export function WeekCalendar({
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
-  const slotHeight = 72;
+  const [visibleDaysCount, setVisibleDaysCount] = useState(7);
+  const slotHeight = visibleDaysCount === 1 ? 64 : 72;
   const bodyHeight = (endHour - startHour) * slotHeight;
+
+  useEffect(() => {
+    const updateVisibleDays = () => {
+      setVisibleDaysCount(getResponsiveWeekDayCount(window.innerWidth));
+    };
+    updateVisibleDays();
+    window.addEventListener('resize', updateVisibleDays);
+    return () => window.removeEventListener('resize', updateVisibleDays);
+  }, []);
 
   const getBookingsForDay = (day: Date) => {
     return bookings
@@ -64,29 +79,19 @@ export function WeekCalendar({
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
   };
 
-  // Responsive: mobile 1 day, tablet 3 days, desktop 7 days
-  const [visibleDaysCount, setVisibleDaysCount] = useState(7);
-  
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useEffect(() => {
-    const updateVisibleDays = () => {
-      const width = window.innerWidth;
-      if (width < 640) setVisibleDaysCount(1);       // mobile
-      else if (width < 1024) setVisibleDaysCount(3); // tablet
-      else setVisibleDaysCount(7);                   // desktop
-    };
-    updateVisibleDays();
-    window.addEventListener('resize', updateVisibleDays);
-    return () => window.removeEventListener('resize', updateVisibleDays);
-  }, []);
+  const visibleDays = getVisibleWeekDays(days, currentDate, visibleDaysCount);
+  const timeColumnWidth = visibleDaysCount === 1 ? 52 : 60;
+  const dayColumnWidths = visibleDays.map((day) => {
+    const maxParallelBookings = getMaximumParallelBookings(getBookingsForDay(day));
+    const minimumBookingWidth = visibleDaysCount === 1 ? 132 : 104;
+    const minimumDayWidth = visibleDaysCount === 1 ? 180 : 116;
 
-  // Start from today (or current week day) instead of always from Monday
-  const today = new Date();
-  const todayIndex = days.findIndex(day => isSameDay(day, today));
-  const startIndex = visibleDaysCount === 7
-    ? 0
-    : Math.min(Math.max(todayIndex, 0), days.length - visibleDaysCount);
-  const visibleDays = days.slice(startIndex, startIndex + visibleDaysCount);
+    return Math.max(
+      minimumDayWidth,
+      maxParallelBookings * minimumBookingWidth + (maxParallelBookings - 1) * 4,
+    );
+  });
+  const gridTemplateColumns = `${timeColumnWidth}px ${dayColumnWidths.map((width) => `minmax(${width}px, 1fr)`).join(' ')}`;
 
   const handleSlotClick = (day: Date, hour: number) => {
     if (onTimeSlotClick) {
@@ -96,10 +101,10 @@ export function WeekCalendar({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {/* Header with days */}
-        <div className="grid sticky top-0 z-10 border-b border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800" style={{ gridTemplateColumns: `60px repeat(${visibleDays.length}, 1fr)` }}>
-          <div className="border-r border-gray-200 dark:border-slate-800 px-2 py-3 text-xs font-semibold text-gray-600 dark:text-slate-400">
+        <div className="sticky top-0 z-10 grid border-b border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-800" style={{ gridTemplateColumns }}>
+          <div className="border-r border-gray-200 px-1.5 py-2 text-xs font-semibold text-gray-600 dark:border-slate-800 dark:text-slate-400 sm:px-2 sm:py-3">
             Zeit
           </div>
           {visibleDays.map((day, idx) => {
@@ -107,7 +112,7 @@ export function WeekCalendar({
             return (
               <div
                 key={day.toString()}
-                className={`px-2 py-3 text-center border-r border-gray-200 dark:border-slate-800 last:border-r-0 ${
+                className={`border-r border-gray-200 px-2 py-2 text-center last:border-r-0 dark:border-slate-800 sm:py-3 ${
                   isTodayCheck
                     ? 'bg-blue-50 dark:bg-blue-500/20'
                     : ''
@@ -123,7 +128,7 @@ export function WeekCalendar({
                   {format(day, 'EEE', { locale: de }).toUpperCase()}
                 </p>
                 <p
-                  className={`text-sm font-bold mt-1 ${
+                  className={`mt-1 text-base font-bold sm:text-sm ${
                     isTodayCheck
                       ? 'text-blue-700 dark:text-blue-100'
                       : 'text-gray-900 dark:text-slate-100'
@@ -137,13 +142,13 @@ export function WeekCalendar({
         </div>
 
         {/* Timeslots grid */}
-        <div className="grid divide-x divide-gray-200 dark:divide-slate-800" style={{ gridTemplateColumns: `60px repeat(${visibleDays.length}, 1fr)` }}>
+        <div className="grid divide-x divide-gray-200 dark:divide-slate-800" style={{ gridTemplateColumns }}>
           {/* Time labels column */}
           <div className="bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800">
               {hours.map((hour) => (
                 <div
                   key={hour}
-                  className="relative border-b border-gray-100 dark:border-slate-800 px-2 py-2 text-right"
+                  className="relative border-b border-gray-100 px-1.5 py-2 text-right dark:border-slate-800 sm:px-2"
                   style={{ height: `${slotHeight}px` }}
                 >
                 <p className="text-xs font-medium text-gray-500 dark:text-slate-400">
@@ -161,7 +166,7 @@ export function WeekCalendar({
             return (
               <div
                 key={day.toString()}
-                className="relative bg-white dark:bg-slate-900"
+                className="relative min-w-0 bg-white dark:bg-slate-900"
                 style={{ height: `${bodyHeight}px` }}
               >
                 {hours.map((hour) => (
@@ -183,11 +188,12 @@ export function WeekCalendar({
                   const width = `calc((100% - ${(position.columns - 1) * gap}px) / ${position.columns})`;
                   const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
                   const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 40);
+                  const isCompactBooking = position.columns >= 3 || timeStyle.height < 52;
 
                   return (
                     <div
                       key={booking.id}
-                      className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2 py-1.5 text-xs text-slate-100 shadow-sm"
+                      className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-1.5 py-1 text-xs text-slate-100 shadow-sm sm:px-2 sm:py-1.5"
                       style={{
                         top: `${timeStyle.top}px`,
                         height: `${timeStyle.height}px`,
@@ -198,8 +204,8 @@ export function WeekCalendar({
                       title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''}`}
                     >
                       <div className="truncate font-semibold leading-tight">{display.title}</div>
-                      {display.staffLabel && (
-                        <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-slate-300">
+                      {display.staffLabel && !isCompactBooking && (
+                        <div className="mt-1 hidden items-center gap-1 text-[10px] font-medium text-slate-300 min-[380px]:flex">
                           <span
                             className="h-2 w-2 shrink-0 rounded-full"
                             style={{ backgroundColor: staffColor }}
