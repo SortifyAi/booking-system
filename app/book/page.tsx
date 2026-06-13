@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ResourceAvatar } from '@/components/ResourceAvatar'
+import { PublicBookingFooter, PublicBookingPrivacyNotice } from '@/components/PublicBookingLegal'
 import { toast } from 'sonner'
 import { Calendar, Clock, User, Scissors, MapPin, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
@@ -27,6 +29,7 @@ interface Offering {
 interface StaffMember {
   id: string
   name: string
+  imageUrl?: string | null
   priority?: number
 }
 
@@ -36,6 +39,7 @@ interface TimeSlot {
   available: boolean
   staffId?: string
   staffName?: string
+  staffImageUrl?: string | null
 }
 
 export default function BookPage() {
@@ -61,6 +65,7 @@ export default function BookPage() {
   const [customerEmail, setCustomerEmail] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
+  const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState(false)
 
   // Fetch locations on mount
   useEffect(() => {
@@ -155,9 +160,24 @@ export default function BookPage() {
       const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === 'true'
       if (isMock) {
         setStaffMembers([
-          { id: 'res-anna', name: 'Anna Weber', priority: 1 },
-          { id: 'res-marc', name: 'Marc Schmidt', priority: 2 },
-          { id: 'res-sophie', name: 'Sophie Becker', priority: 3 },
+          {
+            id: 'res-anna',
+            name: 'Anna Weber',
+            imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80',
+            priority: 1,
+          },
+          {
+            id: 'res-marc',
+            name: 'Marc Schmidt',
+            imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80',
+            priority: 2,
+          },
+          {
+            id: 'res-sophie',
+            name: 'Sophie Becker',
+            imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=240&q=80',
+            priority: 3,
+          },
         ])
         setLoading(false)
         return
@@ -165,7 +185,7 @@ export default function BookPage() {
 
       const { data, error } = await supabase
         .from('resources')
-        .select('id, name, type, location_id, is_active')
+        .select('*')
         .eq('location_id', locationId)
         .eq('type', 'staff')
         .eq('is_active', true)
@@ -176,6 +196,7 @@ export default function BookPage() {
         .map((row: any, idx: number) => ({
           id: row.id as string,
           name: row.name as string,
+          imageUrl: row.image_url as string | null,
           priority: idx,
         }))
         .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
@@ -185,9 +206,24 @@ export default function BookPage() {
       console.error('Error fetching staff members:', error)
       // Fallback mock staff data
       setStaffMembers([
-        { id: 'res-anna', name: 'Anna Weber', priority: 1 },
-        { id: 'res-marc', name: 'Marc Schmidt', priority: 2 },
-        { id: 'res-sophie', name: 'Sophie Becker', priority: 3 },
+        {
+          id: 'res-anna',
+          name: 'Anna Weber',
+          imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80',
+          priority: 1,
+        },
+        {
+          id: 'res-marc',
+          name: 'Marc Schmidt',
+          imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80',
+          priority: 2,
+        },
+        {
+          id: 'res-sophie',
+          name: 'Sophie Becker',
+          imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=240&q=80',
+          priority: 3,
+        },
       ])
     } finally {
       setLoading(false)
@@ -219,6 +255,7 @@ export default function BookPage() {
             available: true,
             staffId: selectedStaff.id,
             staffName: selectedStaff.name,
+            staffImageUrl: selectedStaff.imageUrl ?? null,
           }))
           setAvailableSlots(slots)
 
@@ -229,6 +266,7 @@ export default function BookPage() {
               available: true,
               staffId: data.fallbackNextAvailable.staffId,
               staffName: data.fallbackNextAvailable.staffName,
+              staffImageUrl: data.fallbackNextAvailable.staffImageUrl ?? null,
             })
           }
         }
@@ -262,6 +300,10 @@ export default function BookPage() {
       toast.error('Bitte füllen Sie alle Pflichtfelder aus')
       return
     }
+    if (!privacyNoticeAccepted) {
+      toast.error('Bitte bestätigen Sie die Datenschutzinformationen')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -276,6 +318,7 @@ export default function BookPage() {
         startTime: selectedSlot.startTime,
         endTime: selectedSlot.endTime,
         notes: notes || undefined,
+        privacyNoticeAccepted,
       }
       
       // Use enhanced API endpoint which handles organization_id lookup and staff validation
@@ -309,6 +352,16 @@ export default function BookPage() {
   // Week days for calendar
   const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
   const today = new Date()
+  const selectedBookingStaff =
+    selectedStaff ||
+    staffMembers.find((staff) => staff.id === selectedSlot?.staffId) ||
+    (selectedSlot?.staffName
+      ? {
+          id: selectedSlot.staffId || 'selected-staff',
+          name: selectedSlot.staffName,
+          imageUrl: selectedSlot.staffImageUrl ?? null,
+        }
+      : null)
   const weekStart = new Date(selectedDate)
   weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1)
 
@@ -460,15 +513,24 @@ export default function BookPage() {
                   <button
                     key={staff.id}
                     onClick={() => { setSelectedStaff(staff); setStep(4) }}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-all hover:border-blue-500 ${
+                    className={`w-full p-3 sm:p-4 rounded-xl border-2 text-left transition-all hover:border-blue-500 hover:shadow-sm ${
                       selectedStaff?.id === staff.id
                         ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
+                        : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-slate-800'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <User className="w-5 h-5 text-blue-600" />
-                      <div className="font-medium dark:text-white">{staff.name}</div>
+                      <ResourceAvatar
+                        name={staff.name}
+                        imageUrl={staff.imageUrl}
+                        className="h-14 w-14"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-900 dark:text-white">{staff.name}</div>
+                        <div className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                          Persönliche Auswahl
+                        </div>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -538,6 +600,7 @@ export default function BookPage() {
                             const fallbackStaff = staffMembers.find(s => s.id === fallbackSlot.staffId) || {
                               id: fallbackSlot.staffId,
                               name: fallbackSlot.staffName || 'Mitarbeiter',
+                              imageUrl: fallbackSlot.staffImageUrl ?? null,
                             }
                             setSelectedStaff(fallbackStaff)
                           }
@@ -638,21 +701,39 @@ export default function BookPage() {
               </div>
 
               {/* Booking Summary */}
-              <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4 mt-4">
+              <div className="bg-gray-50 dark:bg-slate-700 rounded-xl p-4 mt-4">
                 <h3 className="font-medium mb-2 dark:text-white">Zusammenfassung</h3>
-                <div className="text-sm space-y-1 text-gray-600 dark:text-gray-300">
+                <div className="text-sm space-y-2 text-gray-600 dark:text-gray-300">
                   <p><span className="font-medium">Standort:</span> {selectedLocation?.name}</p>
                   <p><span className="font-medium">Leistung:</span> {selectedOffering?.name}</p>
-                  <p><span className="font-medium">Mitarbeiter:</span> {selectedStaff?.name || selectedSlot?.staffName || 'Keine Präferenz'}</p>
+                  <div className="flex items-center gap-3 rounded-lg bg-white p-3 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-600">
+                    <ResourceAvatar
+                      name={selectedBookingStaff?.name || 'Keine Präferenz'}
+                      imageUrl={selectedBookingStaff?.imageUrl}
+                      className="h-12 w-12"
+                    />
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Mitarbeiter
+                      </div>
+                      <div className="font-semibold text-gray-900 dark:text-white">
+                        {selectedBookingStaff?.name || 'Keine Präferenz'}
+                      </div>
+                    </div>
+                  </div>
                   <p><span className="font-medium">Datum:</span> {selectedDate.toLocaleDateString('de-DE')}</p>
                   <p><span className="font-medium">Uhrzeit:</span> {selectedSlot && formatTime(selectedSlot.startTime)}</p>
                   <p><span className="font-medium">Preis:</span> {selectedOffering && formatPrice(selectedOffering.price_cents)}</p>
                 </div>
               </div>
+              <PublicBookingPrivacyNotice
+                checked={privacyNoticeAccepted}
+                onCheckedChange={setPrivacyNoticeAccepted}
+              />
 
               <Button 
                 onClick={handleSubmit}
-                disabled={submitting || !customerName || !customerEmail}
+                disabled={submitting || !customerName || !customerEmail || !privacyNoticeAccepted}
                 className="w-full"
               >
                 {submitting ? 'Wird gebucht...' : 'Termin buchen'}
@@ -676,6 +757,7 @@ export default function BookPage() {
             </Button>
           </div>
         )}
+        <PublicBookingFooter />
       </div>
     </div>
   )

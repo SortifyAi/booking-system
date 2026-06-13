@@ -58,6 +58,8 @@ export interface Resource {
   name: string
   type: ResourceType
   capacity: number
+  imageUrl?: string | null
+  image_url?: string | null
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -202,12 +204,14 @@ export interface CreateResourceRequest {
   name: string
   type: ResourceType
   capacity?: number
+  imageUrl?: string | null
 }
 
 export interface UpdateResourceRequest {
   name?: string
   type?: ResourceType
   capacity?: number
+  imageUrl?: string | null
   isActive?: boolean
 }
 
@@ -272,4 +276,7 @@ export interface AvailabilitySlot {
   startTime: string // ISO 8601
   endTime: string   // ISO 8601
   available: boolean
+  staffId?: string
+  staffName?: string
+  staffImageUrl?: string | null
 }

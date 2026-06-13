@@ -5,6 +5,8 @@ import { getUser } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { generateManageToken, buildManageUrl } from '@/lib/booking-token'
 import { sendBookingConfirmation } from '@/lib/email'
+import { resolveClosedReason } from '@/lib/holidays'
+import { utcToZonedDateStr } from '@/lib/timezone'
 
 const createEnhancedBookingSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -17,6 +19,7 @@ const createEnhancedBookingSchema = z.object({
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   notes: z.string().optional(),
+  privacyNoticeAccepted: z.boolean().optional(),
 })
 
 /**
@@ -135,28 +138,50 @@ export async function POST(request: NextRequest) {
       startTime,
       endTime,
       notes,
+      privacyNoticeAccepted,
     } = validationResult.data
 
     const client = await createClient()
     const user = await getUser()
 
-    let finalOrganizationId = organizationId
-    if (!finalOrganizationId) {
-      // For public bookings, get org from location
-      const { data: location, error: locError } = await client
-        .from('locations')
-        .select('organization_id')
-        .eq('id', locationId)
-        .single() as any
+    if (!user && privacyNoticeAccepted !== true) {
+      return NextResponse.json(
+        { error: 'Bitte bestätigen Sie die Datenschutzinformationen', code: 'PRIVACY_NOTICE_REQUIRED' },
+        { status: 400 }
+      )
+    }
 
-      if (locError || !location) {
+    // Always load the location: we need its org (for public bookings) plus the
+    // settings/timezone to reject bookings on closed days.
+    const { data: location, error: locError } = await client
+      .from('locations')
+      .select('organization_id, settings, timezone')
+      .eq('id', locationId)
+      .single() as any
+
+    if (locError || !location) {
+      return NextResponse.json(
+        { error: 'Standort nicht gefunden' },
+        { status: 404 }
+      )
+    }
+
+    const finalOrganizationId = organizationId || location.organization_id
+
+    // Reject public bookings on closed days (public holiday or owner exception).
+    // The booking page already hides these slots, but a direct POST must not
+    // bypass it. The day is derived in the location's timezone so a late-evening
+    // slot is attributed to the correct calendar date. Authenticated staff are
+    // exempt so they can still place a booking on a closed day by hand.
+    if (!user) {
+      const bookingDate = utcToZonedDateStr(startTime, location.timezone || 'Europe/Berlin')
+      const closedReason = await resolveClosedReason(location.settings, bookingDate)
+      if (closedReason) {
         return NextResponse.json(
-          { error: 'Standort nicht gefunden' },
-          { status: 404 }
+          { error: closedReason, code: 'CLOSED' },
+          { status: 400 }
         )
       }
-
-      finalOrganizationId = location.organization_id
     }
 
     // Verify user has access if authenticated
@@ -253,7 +278,7 @@ export async function POST(request: NextRequest) {
 
         if (freeStaff.length === 0) {
           return NextResponse.json(
-            { error: 'Kein Mitarbeiter ist für diesen Zeitraum verfügbar' },
+            { error: 'Dieser Termin ist leider nicht mehr verfügbar.', code: 'SLOT_TAKEN' },
             { status: 409 }
           )
         }
@@ -279,7 +304,7 @@ export async function POST(request: NextRequest) {
     if (conflictError) throw conflictError
     if (conflictingBookings?.length) {
       return NextResponse.json(
-        { error: 'Zeitraum für diesen Mitarbeiter nicht mehr verfügbar' },
+        { error: 'Dieser Termin ist leider nicht mehr verfügbar.', code: 'SLOT_TAKEN' },
         { status: 409 }
       )
     }
@@ -303,12 +328,29 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         status: 'confirmed',
         manage_token: manageToken,
-        metadata: { staffAssigned: !!finalResourceId, autoAssigned: !resourceId && !!finalResourceId },
+        metadata: {
+          staffAssigned: !!finalResourceId,
+          autoAssigned: !resourceId && !!finalResourceId,
+          privacyNoticeAccepted: !user ? true : undefined,
+          privacyNoticeAcceptedAt: !user ? new Date().toISOString() : undefined,
+        },
       })
       .select('*, resources(id, name, type), offerings(name), locations(name, address), organizations(name)')
       .single() as any
 
-    if (createError) throw createError
+    if (createError) {
+      // Race-condition guard: the bookings_no_overlap exclusion constraint
+      // rejects this insert if another request booked an overlapping slot for
+      // the same resource a moment earlier. Postgres reports this as 23P01.
+      // This is the atomic backstop the pre-checks above cannot guarantee.
+      if (createError.code === '23P01') {
+        return NextResponse.json(
+          { error: 'Dieser Termin ist leider nicht mehr verfügbar.', code: 'SLOT_TAKEN' },
+          { status: 409 }
+        )
+      }
+      throw createError
+    }
 
     const manageUrl = buildManageUrl(manageToken)
 

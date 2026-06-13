@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   format,
   startOfWeek,
@@ -21,6 +21,7 @@ import {
   getResponsiveWeekDayCount,
   getVisibleWeekDays,
 } from '@/lib/calendar-responsive';
+import { useCalendarDrag, type DropTarget } from '@/lib/hooks/use-calendar-drag';
 
 interface Booking {
   id: string;
@@ -41,6 +42,8 @@ interface WeekCalendarProps {
   startHour?: number;
   endHour?: number;
   onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
+  onBookingMove?: (bookingId: string, newStart: Date, newEnd: Date) => void;
+  onBookingClick?: (bookingId: string) => void;
 }
 
 const staffColors: Record<string, string> = {
@@ -55,6 +58,8 @@ export function WeekCalendar({
   startHour = 7,
   endHour = 20,
   onTimeSlotClick,
+  onBookingMove,
+  onBookingClick,
 }: WeekCalendarProps) {
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
@@ -63,6 +68,37 @@ export function WeekCalendar({
   const [visibleDaysCount, setVisibleDaysCount] = useState(7);
   const slotHeight = visibleDaysCount === 1 ? 64 : 72;
   const bodyHeight = (endHour - startHour) * slotHeight;
+  const slotHeightRef = useRef(slotHeight);
+  slotHeightRef.current = slotHeight;
+
+  const resolvePoint = (clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const column = element?.closest('[data-cal-day]') as HTMLElement | null;
+    if (!column?.dataset.calDay) return null;
+    const rect = column.getBoundingClientRect();
+    const pointerMinutes = ((clientY - rect.top) / slotHeightRef.current) * 60;
+    return { columnKey: column.dataset.calDay, pointerMinutes };
+  };
+
+  const handleCommit = (bookingId: string, target: DropTarget) => {
+    if (!onBookingMove) return;
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (!booking) return;
+    const durationMs = new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime();
+    const [year, month, day] = target.columnKey.split('-').map(Number);
+    const newStart = new Date(year, month - 1, day, startHour, 0, 0, 0);
+    newStart.setMinutes(newStart.getMinutes() + target.minutesFromStart);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+    if (newStart.getTime() === new Date(booking.start_time).getTime()) return;
+    onBookingMove(bookingId, newStart, newEnd);
+  };
+
+  const { dragState, startDrag, draggingId } = useCalendarDrag({
+    dayMinutes: (endHour - startHour) * 60,
+    resolvePoint,
+    onCommit: handleCommit,
+    onClick: (id) => onBookingClick?.(id),
+  });
 
   useEffect(() => {
     const updateVisibleDays = () => {
@@ -162,10 +198,13 @@ export function WeekCalendar({
           {visibleDays.map((day) => {
             const dayBookings = getBookingsForDay(day);
             const layout = layoutOverlappingBookings(dayBookings);
+            const dayKey = format(day, 'yyyy-MM-dd');
+            const isDropTarget = dragState?.target?.columnKey === dayKey;
 
             return (
               <div
                 key={day.toString()}
+                data-cal-day={dayKey}
                 className="relative min-w-0 bg-white dark:bg-slate-900"
                 style={{ height: `${bodyHeight}px` }}
               >
@@ -180,6 +219,21 @@ export function WeekCalendar({
                   />
                 ))}
 
+                {/* Drop preview while dragging onto this day */}
+                {isDropTarget && dragState?.target && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0.5 z-20 flex items-start rounded-md border-2 border-dashed border-blue-500 bg-blue-500/20 px-1.5 py-1 text-[10px] font-semibold text-blue-700 dark:text-blue-200"
+                    style={{
+                      top: `${(dragState.target.minutesFromStart / 60) * slotHeight + 6}px`,
+                      height: `${Math.max(40, (dragState.durationMinutes / 60) * slotHeight - 10)}px`,
+                    }}
+                  >
+                    {String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}
+                    :
+                    {String(dragState.target.minutesFromStart % 60).padStart(2, '0')}
+                  </div>
+                )}
+
                 {dayBookings.map((booking) => {
                   const staffColor = booking.staff_color || staffColors[booking.staff_id] || '#60A5FA';
                   const display = getBookingDisplayParts(booking);
@@ -189,19 +243,38 @@ export function WeekCalendar({
                   const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
                   const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 40);
                   const isCompactBooking = position.columns >= 3 || timeStyle.height < 52;
+                  const bookingStart = new Date(booking.start_time);
+                  const startMinutes = (bookingStart.getHours() - startHour) * 60 + bookingStart.getMinutes();
+                  const durationMinutes = Math.max(
+                    15,
+                    (new Date(booking.end_time).getTime() - bookingStart.getTime()) / 60000,
+                  );
+                  const isDragSource = draggingId === booking.id;
 
                   return (
                     <div
                       key={booking.id}
-                      className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-1.5 py-1 text-xs text-slate-100 shadow-sm sm:px-2 sm:py-1.5"
+                      onPointerDown={(e) =>
+                        startDrag(e, {
+                          id: booking.id,
+                          durationMinutes,
+                          startMinutes,
+                          title: display.title,
+                        })
+                      }
+                      className="absolute z-10 select-none overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-1.5 py-1 text-xs text-slate-100 shadow-sm sm:px-2 sm:py-1.5"
                       style={{
                         top: `${timeStyle.top}px`,
                         height: `${timeStyle.height}px`,
                         left,
                         width,
                         borderLeft: `4px solid ${staffColor}`,
+                        cursor: 'grab',
+                        touchAction: 'none',
+                        opacity: isDragSource ? 0.4 : 1,
+                        pointerEvents: draggingId ? 'none' : undefined,
                       }}
-                      title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''}`}
+                      title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''} · Ziehen zum Verschieben`}
                     >
                       <div className="truncate font-semibold leading-tight">{display.title}</div>
                       {display.staffLabel && !isCompactBooking && (
@@ -222,6 +295,17 @@ export function WeekCalendar({
         </div>
       </div>
 
+      {/* Floating drag hint following the pointer */}
+      {dragState && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[140%] rounded-md bg-slate-900 px-2 py-1 text-xs font-semibold text-white shadow-lg dark:bg-slate-700"
+          style={{ left: dragState.pointerX, top: dragState.pointerY }}
+        >
+          {dragState.target
+            ? `${String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}:${String(dragState.target.minutesFromStart % 60).padStart(2, '0')}`
+            : dragState.title}
+        </div>
+      )}
     </div>
   );
 }

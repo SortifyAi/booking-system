@@ -27,7 +27,7 @@ interface Location {
   address: string | null;
   timezone: string;
   organization_id: string;
-  settings?: { openingHours?: any[] };
+  settings?: { openingHours?: any[]; bundesland?: string; exceptions?: any[] };
 }
 
 export default function LocationsPage() {
@@ -99,7 +99,11 @@ export default function LocationsPage() {
         address: formData.address,
         timezone: formData.timezone || 'UTC',
         organization_id: organizationId,
-        settings: { openingHours: formData.openingHours ?? [] },
+        settings: {
+          openingHours: formData.openingHours ?? [],
+          bundesland: formData.bundesland || '',
+          exceptions: formData.exceptions ?? [],
+        },
       });
 
       if (error) throw error;
@@ -135,7 +139,12 @@ export default function LocationsPage() {
         name: formData.name,
         address: formData.address,
         timezone: formData.timezone,
-        settings: { openingHours: formData.openingHours ?? [] },
+        settings: {
+          ...(editingLocation.settings ?? {}),
+          openingHours: formData.openingHours ?? [],
+          bundesland: formData.bundesland || '',
+          exceptions: formData.exceptions ?? [],
+        },
       }).eq('id', editingLocation.id);
 
       if (error) throw error;
@@ -258,7 +267,7 @@ export default function LocationsPage() {
 
       {/* Create/Edit Modal */}
       <Dialog open={showModal} onOpenChange={closeModal}>
-        <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingLocation ? 'Standort bearbeiten' : 'Neuen Standort erstellen'}
@@ -273,6 +282,8 @@ export default function LocationsPage() {
               address: editingLocation.address || '',
               timezone: editingLocation.timezone,
               openingHours: editingLocation.settings?.openingHours,
+              bundesland: editingLocation.settings?.bundesland,
+              exceptions: editingLocation.settings?.exceptions,
             } : undefined}
           />
         </DialogContent>

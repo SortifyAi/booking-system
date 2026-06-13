@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client';
 
+import { useRef } from 'react';
 import {
   format,
   isToday,
@@ -17,6 +18,7 @@ import {
   getMaximumParallelBookings,
   layoutOverlappingBookings,
 } from '@/lib/calendar-layout';
+import { useCalendarDrag, type DropTarget } from '@/lib/hooks/use-calendar-drag';
 
 interface Booking {
   id: string;
@@ -45,6 +47,13 @@ interface DayCalendarProps {
   selectedStaff?: string;
   staffMembers?: Staff[];
   onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
+  onBookingMove?: (
+    bookingId: string,
+    newStart: Date,
+    newEnd: Date,
+    newStaffId?: string,
+  ) => void;
+  onBookingClick?: (bookingId: string) => void;
 }
 
 const staffColors: Record<string, string> = {
@@ -63,9 +72,45 @@ export function DayCalendar({
   selectedStaff = 'all',
   staffMembers = [],
   onTimeSlotClick,
+  onBookingMove,
+  onBookingClick,
 }: DayCalendarProps) {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
   const bodyHeight = (endHour - startHour) * slotHeight;
+
+  const resolvePoint = (clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const column = element?.closest('[data-cal-staff]') as HTMLElement | null;
+    if (!column || column.dataset.calStaff == null) return null;
+    const rect = column.getBoundingClientRect();
+    const pointerMinutes = ((clientY - rect.top) / slotHeight) * 60;
+    return { columnKey: column.dataset.calStaff, pointerMinutes };
+  };
+
+  const handleCommit = (bookingId: string, target: DropTarget) => {
+    if (!onBookingMove) return;
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (!booking) return;
+    const bookingStart = new Date(booking.start_time);
+    const durationMs = new Date(booking.end_time).getTime() - bookingStart.getTime();
+    const newStart = new Date(currentDate);
+    newStart.setHours(startHour, 0, 0, 0);
+    newStart.setMinutes(newStart.getMinutes() + target.minutesFromStart);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+    const newStaffId = target.columnKey || undefined;
+    const currentStaffId = booking.staff_id || booking.resource_id || '';
+    const timeUnchanged = newStart.getTime() === bookingStart.getTime();
+    const staffUnchanged = !newStaffId || newStaffId === currentStaffId;
+    if (timeUnchanged && staffUnchanged) return;
+    onBookingMove(bookingId, newStart, newEnd, newStaffId);
+  };
+
+  const { dragState, startDrag, draggingId } = useCalendarDrag({
+    dayMinutes: (endHour - startHour) * 60,
+    resolvePoint,
+    onCommit: handleCommit,
+    onClick: (id) => onBookingClick?.(id),
+  });
 
   const dayBookings = bookings.filter((booking) => {
     const bookingDate = new Date(booking.start_time);
@@ -143,9 +188,11 @@ export function DayCalendar({
             const staffColor = booking.staff_color || staff?.color || staffColors[booking.staff_id] || '#60A5FA';
 
             return (
-              <div
+              <button
                 key={booking.id}
-                className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                type="button"
+                onClick={() => onBookingClick?.(booking.id)}
+                className="w-full rounded-lg border border-gray-200 bg-white p-3 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900"
                 style={{ borderLeft: `5px solid ${staffColor}` }}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -170,7 +217,7 @@ export function DayCalendar({
                     {format(new Date(booking.start_time), 'HH:mm')}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })
         ) : (
@@ -226,10 +273,13 @@ export function DayCalendar({
             {staffColumns.map((staff) => {
               const staffBookings = getStaffBookings(staff.id);
               const layout = layoutOverlappingBookings(staffBookings);
+              const columnKey = staff.id || '';
+              const isDropTarget = dragState?.target?.columnKey === columnKey;
 
               return (
                 <div
                   key={staff.id || 'all-column'}
+                  data-cal-staff={columnKey}
                   className="relative border-r border-gray-200 last:border-r-0 dark:border-slate-800"
                   style={{ height: `${bodyHeight}px` }}
                 >
@@ -244,6 +294,21 @@ export function DayCalendar({
                     />
                   ))}
 
+                  {/* Drop preview while dragging onto this staff column */}
+                  {isDropTarget && dragState?.target && (
+                    <div
+                      className="pointer-events-none absolute inset-x-1 z-20 flex items-start rounded-md border-2 border-dashed border-blue-500 bg-blue-500/20 px-2 py-1 text-xs font-semibold text-blue-700 dark:text-blue-200"
+                      style={{
+                        top: `${(dragState.target.minutesFromStart / 60) * slotHeight + 6}px`,
+                        height: `${Math.max(48, (dragState.durationMinutes / 60) * slotHeight - 10)}px`,
+                      }}
+                    >
+                      {String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}
+                      :
+                      {String(dragState.target.minutesFromStart % 60).padStart(2, '0')}
+                    </div>
+                  )}
+
                   {staffBookings.map((booking) => {
                     const staffColor = booking.staff_color || staff.color || staffColors[booking.staff_id] || '#60A5FA';
                     const display = getBookingDisplayParts(booking);
@@ -253,19 +318,38 @@ export function DayCalendar({
                     const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
                     const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 48);
                     const isCompactBooking = position.columns >= 3 || timeStyle.height < 58;
+                    const bookingStart = new Date(booking.start_time);
+                    const startMinutes = (bookingStart.getHours() - startHour) * 60 + bookingStart.getMinutes();
+                    const durationMinutes = Math.max(
+                      15,
+                      (new Date(booking.end_time).getTime() - bookingStart.getTime()) / 60000,
+                    );
+                    const isDragSource = draggingId === booking.id;
 
                     return (
                       <div
                         key={booking.id}
-                        className="absolute z-10 overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2 py-1.5 text-xs text-slate-100 shadow-sm sm:px-2.5 sm:py-2 sm:text-sm"
+                        onPointerDown={(e) =>
+                          startDrag(e, {
+                            id: booking.id,
+                            durationMinutes,
+                            startMinutes,
+                            title: display.title,
+                          })
+                        }
+                        className="absolute z-10 select-none overflow-hidden rounded-md border border-slate-600/70 bg-slate-800/95 px-2 py-1.5 text-xs text-slate-100 shadow-sm sm:px-2.5 sm:py-2 sm:text-sm"
                         style={{
                           top: `${timeStyle.top}px`,
                           height: `${timeStyle.height}px`,
                           left,
                           width,
                           borderLeft: `5px solid ${staffColor}`,
+                          cursor: 'grab',
+                          touchAction: 'none',
+                          opacity: isDragSource ? 0.4 : 1,
+                          pointerEvents: draggingId ? 'none' : undefined,
                         }}
-                        title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''}`}
+                        title={`${display.title}${display.staffLabel ? ` - ${display.staffLabel}` : ''} · Ziehen zum Verschieben`}
                       >
                         <div className="flex h-full min-h-8 flex-col justify-between gap-1">
                           <div className="min-w-0">
@@ -309,6 +393,18 @@ export function DayCalendar({
         <div className="hidden py-8 text-center text-gray-600 dark:text-slate-400 sm:block sm:py-12">
           <p className="text-lg font-medium mb-2">Keine Buchungen heute</p>
           <p className="text-sm">Erstelle eine neue Buchung mit dem Button oben</p>
+        </div>
+      )}
+
+      {/* Floating drag hint following the pointer */}
+      {dragState && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[140%] rounded-md bg-slate-900 px-2 py-1 text-xs font-semibold text-white shadow-lg dark:bg-slate-700"
+          style={{ left: dragState.pointerX, top: dragState.pointerY }}
+        >
+          {dragState.target
+            ? `${String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}:${String(dragState.target.minutesFromStart % 60).padStart(2, '0')}`
+            : dragState.title}
         </div>
       )}
     </div>

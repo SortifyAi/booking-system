@@ -80,6 +80,7 @@ export function useCreateResource() {
           ...validation.data,
           capacity: validation.data.capacity ?? 1,
           type: validation.data.type || 'staff',
+          image_url: validation.data.imageUrl ?? null,
           created_at: new Date().toISOString(),
         }
       }

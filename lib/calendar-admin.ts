@@ -17,6 +17,9 @@ export interface CalendarBooking {
   staff_id?: string | null
   staff_name?: string
   staff_color?: string
+  customer_phone?: string | null
+  customer_email?: string | null
+  notes?: string | null
 }
 
 const humanizeLegacyStaffId = (staffId?: string | null) => {
@@ -80,5 +83,8 @@ export function normalizeCalendarBooking(
     staff_id: staffId || null,
     staff_name: staff?.name || booking.resources?.name || getStaffLabel({ ...booking, staff_id: staffId }),
     staff_color: staff?.color,
+    customer_phone: booking.customer_phone ?? null,
+    customer_email: booking.customer_email ?? null,
+    notes: booking.notes ?? null,
   }
 }

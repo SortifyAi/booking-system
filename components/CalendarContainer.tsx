@@ -53,6 +53,13 @@ interface CalendarContainerProps {
   onStaffChange?: (staffId: string) => void;
   staffMembers?: Staff[];
   onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
+  onBookingMove?: (
+    bookingId: string,
+    newStart: Date,
+    newEnd: Date,
+    newStaffId?: string,
+  ) => void;
+  onBookingClick?: (bookingId: string) => void;
 }
 
 type ViewType = 'week' | 'day';
@@ -69,6 +76,8 @@ export function CalendarContainer({
   onStaffChange,
   staffMembers = [],
   onTimeSlotClick,
+  onBookingMove,
+  onBookingClick,
 }: CalendarContainerProps) {
   const [visibleWeekDaysCount, setVisibleWeekDaysCount] = useState(7);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -295,6 +304,8 @@ export function CalendarContainer({
             startHour={startHour}
             endHour={endHour}
             onTimeSlotClick={onTimeSlotClick}
+            onBookingMove={onBookingMove}
+            onBookingClick={onBookingClick}
           />
         ) : (
           <DayCalendar
@@ -305,6 +316,8 @@ export function CalendarContainer({
             selectedStaff={selectedStaff}
             staffMembers={staffMembers}
             onTimeSlotClick={onTimeSlotClick}
+            onBookingMove={onBookingMove}
+            onBookingClick={onBookingClick}
           />
         )}
       </div>

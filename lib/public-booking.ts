@@ -4,6 +4,7 @@ export interface PublicBookingSlot {
   available: boolean
   staffId?: string
   staffName?: string
+  staffImageUrl?: string | null
 }
 
 export interface StaffAvailabilityForPublicBooking {
@@ -25,6 +26,7 @@ export function combineStaffAvailabilitySlots(
         ...slot,
         staffId: slot.staffId || staff.staffId,
         staffName: slot.staffName || staff.staffName,
+        staffImageUrl: slot.staffImageUrl ?? null,
         priority: staff.priority ?? 0,
       }
       const existing = slotMap.get(key)

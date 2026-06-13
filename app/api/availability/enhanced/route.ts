@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/server/db'
 import { AvailabilitySlot } from '@/types/models'
 import { z } from 'zod'
-import { parse, addMinutes, format, setHours, setMinutes } from 'date-fns'
+import { parse, addMinutes, format } from 'date-fns'
 import { BUSINESS_HOURS } from '@/lib/constants'
+import { zonedTimeToUtc } from '@/lib/timezone'
+import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
 
 const enhancedAvailabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -20,6 +22,7 @@ const enhancedAvailabilitySchema = z.object({
 interface StaffAvailability {
   staffId: string
   staffName: string
+  staffImageUrl?: string | null
   slots: AvailabilitySlot[]
   utilizationRate: number
   availableSlots: number
@@ -126,11 +129,49 @@ export async function GET(request: NextRequest) {
     const isSmartMode = mode === 'smart'
     const preferredId = preferredStaffId || staffId
 
+    // Holidays (per Bundesland) and owner exceptions close the day or override
+    // its hours. Resolve before the expensive staff/booking/block queries so a
+    // closed day short-circuits. An exception always wins over the holiday calendar.
+    const closedReason = await resolveClosedReason(location.settings, date)
+    const exceptionWindow = getExceptionWindow(location.settings, date)
+    if (closedReason) {
+      if (isSmartMode) {
+        return NextResponse.json({
+          type: 'smart',
+          date,
+          preferredStaffId: preferredId || null,
+          preferredStaffAvailableSlots: [],
+          fallbackNextAvailable: null,
+          reason: closedReason,
+          closed: true,
+          closedReason,
+        })
+      }
+      if (aggregated) {
+        return NextResponse.json({
+          type: 'aggregated',
+          date,
+          aggregated: null,
+          staffDetails: [],
+          closed: true,
+          closedReason,
+        })
+      }
+      return NextResponse.json({
+        type: preferredId ? 'individual' : 'multi',
+        date,
+        staffMember: null,
+        staffAvailabilities: [],
+        closed: true,
+        closedReason,
+      })
+    }
+
     // For the first production test, every active staff member at the location
     // can perform every active offering.
     let staffQuery = client
       .from('resources')
-      .select('id, name, capacity')
+      .select('*')
       .eq('location_id', locationId)
       .eq('type', 'staff')
       .eq('is_active', true)
@@ -215,6 +256,10 @@ export async function GET(request: NextRequest) {
 
     if (blockError) throw blockError
 
+    // Opening hours are wall-clock times in the location's timezone; the slots
+    // must be built in that timezone, not the server's (see lib/timezone.ts).
+    const timezone = location.timezone || 'Europe/Berlin'
+
     // Determine fallback schedule from location opening hours or BUSINESS_HOURS
     const openingHours: any[] = location.settings?.openingHours ?? []
     const todayHours = openingHours.find((h: any) => h.day === dayOfWeek)
@@ -231,11 +276,15 @@ export async function GET(request: NextRequest) {
     ): AvailabilitySlot[] => {
       const slots: AvailabilitySlot[] = []
 
-      if (locationClosedToday && (!staffSchedules || staffSchedules.length === 0)) return slots
+      // A custom-hours exception forces the day open even if it is normally
+      // closed (e.g. owner opens on a Sunday or public holiday).
+      if (!exceptionWindow && locationClosedToday && (!staffSchedules || staffSchedules.length === 0)) return slots
 
-      // Fallback: wenn kein Schichtplan existiert, gelten die Öffnungszeiten
-      const effectiveSchedules =
-        staffSchedules && staffSchedules.length > 0
+      // Exception hours override schedules and opening hours for this date;
+      // otherwise fall back to the staff schedule, then the location's hours.
+      const effectiveSchedules = exceptionWindow
+        ? [{ start_time: `${exceptionWindow.open}:00`, end_time: `${exceptionWindow.close}:00`, resource_id: staffMemberId }]
+        : staffSchedules && staffSchedules.length > 0
           ? staffSchedules
           : [{ ...fallbackSchedule, resource_id: staffMemberId }]
 
@@ -243,8 +292,8 @@ export async function GET(request: NextRequest) {
         const [startHour, startMin] = schedule.start_time.split(':').map(Number)
         const [endHour, endMin] = schedule.end_time.split(':').map(Number)
 
-        let slotStart = setMinutes(setHours(dateObj, startHour), startMin)
-        const dayEnd = setMinutes(setHours(dateObj, endHour), endMin)
+        let slotStart = zonedTimeToUtc(date, startHour, startMin, timezone)
+        const dayEnd = zonedTimeToUtc(date, endHour, endMin, timezone)
 
         while (slotStart.getTime() + durationMinutes * 60000 <= dayEnd.getTime()) {
           const slotEnd = addMinutes(slotStart, durationMinutes)
@@ -307,12 +356,14 @@ export async function GET(request: NextRequest) {
       staffAvailabilities.push({
         staffId: staff.id,
         staffName: staff.name,
+        staffImageUrl: staff.image_url ?? null,
         slots: slots.map(s => ({
           startTime: s.startTime,
           endTime: s.endTime,
           available: s.available,
           staffId: staff.id,
           staffName: staff.name,
+          staffImageUrl: staff.image_url ?? null,
         })),
         availableSlots,
         totalSlots,
@@ -335,6 +386,7 @@ export async function GET(request: NextRequest) {
         endTime: string
         staffId: string
         staffName: string
+        staffImageUrl?: string | null
       } | null = null
       let reason: string | null = null
 
@@ -350,6 +402,7 @@ export async function GET(request: NextRequest) {
               endTime: slot.endTime,
               staffId: s.staffId,
               staffName: s.staffName,
+              staffImageUrl: s.staffImageUrl ?? null,
               priority: s.priority ?? 0,
             }))
         )
@@ -368,6 +421,7 @@ export async function GET(request: NextRequest) {
             endTime: earliest.endTime,
             staffId: earliest.staffId,
             staffName: earliest.staffName,
+            staffImageUrl: earliest.staffImageUrl ?? null,
           }
           if (!reason) reason = 'Preferred staff has no availability for selected date'
         } else {

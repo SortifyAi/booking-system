@@ -61,6 +61,7 @@ export const CreateResourceSchema = z.object({
   name: z.string().min(1, 'Ressourcenname ist erforderlich').max(255),
   type: z.enum(['staff', 'table', 'room', 'equipment']),
   capacity: z.number().int().positive('Kapazität muss positiv sein').default(1),
+  imageUrl: z.string().nullable().optional(),
 })
 
 export const UpdateResourceSchema = z.object({
@@ -68,6 +69,7 @@ export const UpdateResourceSchema = z.object({
   type: z.enum(['staff', 'table', 'room', 'equipment']).optional(),
   capacity: z.number().int().positive().optional(),
   isActive: z.boolean().optional(),
+  imageUrl: z.string().nullable().optional(),
 })
 
 // ============================================================================

@@ -4,10 +4,12 @@ import { use, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ResourceAvatar } from '@/components/ResourceAvatar'
+import { PublicBookingFooter, PublicBookingPrivacyNotice } from '@/components/PublicBookingLegal'
 import { toast } from 'sonner'
 import { Calendar, Clock, User, MapPin, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
-import { getShowPrices, getShowDuration } from '@/lib/booking-policy'
+import { getShowPrices, getShowDuration, getRequiredCustomerFields, getPrivacyPolicyUrl } from '@/lib/booking-policy'
 import { format } from 'date-fns'
 
 interface OrgInfo {
@@ -36,6 +38,7 @@ interface Offering {
 interface StaffMember {
   id: string
   name: string
+  imageUrl?: string | null
   priority?: number
 }
 
@@ -45,6 +48,7 @@ interface TimeSlot {
   available: boolean
   staffId?: string
   staffName?: string
+  staffImageUrl?: string | null
 }
 
 export default function OrgBookPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -65,6 +69,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
   const [fallbackReason, setFallbackReason] = useState<string | null>(null)
   const [fallbackSlot, setFallbackSlot] = useState<TimeSlot | null>(null)
+  const [closedReason, setClosedReason] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [manageUrl, setManageUrl] = useState<string | null>(null)
@@ -73,6 +78,9 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [customerEmail, setCustomerEmail] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
+  const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState(false)
+
+  const requiredFields = getRequiredCustomerFields(org?.settings)
 
   useEffect(() => {
     fetchOrg()
@@ -150,16 +158,31 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === 'true'
       if (isMock) {
         setStaffMembers([
-          { id: 'res-anna', name: 'Anna Weber', priority: 1 },
-          { id: 'res-marc', name: 'Marc Schmidt', priority: 2 },
-          { id: 'res-sophie', name: 'Sophie Becker', priority: 3 },
+          {
+            id: 'res-anna',
+            name: 'Anna Weber',
+            imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80',
+            priority: 1,
+          },
+          {
+            id: 'res-marc',
+            name: 'Marc Schmidt',
+            imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80',
+            priority: 2,
+          },
+          {
+            id: 'res-sophie',
+            name: 'Sophie Becker',
+            imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=240&q=80',
+            priority: 3,
+          },
         ])
         return
       }
 
       const { data, error } = await supabase
         .from('resources')
-        .select('id, name, type, location_id, is_active')
+        .select('*')
         .eq('location_id', locationId)
         .eq('type', 'staff')
         .eq('is_active', true)
@@ -170,6 +193,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
         .map((row: any, idx: number) => ({
           id: row.id as string,
           name: row.name as string,
+          imageUrl: row.image_url as string | null,
           priority: idx,
         }))
         .sort((a: StaffMember, b: StaffMember) => (a.priority ?? 0) - (b.priority ?? 0))
@@ -186,6 +210,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
     setLoading(true)
     setFallbackReason(null)
     setFallbackSlot(null)
+    setClosedReason(null)
     try {
       // Local calendar date (NOT toISOString, which is UTC and shifts the day
       // late in the evening for Europe/Berlin → wrong/missing slots).
@@ -200,6 +225,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
         })
         const res = await fetch(`/api/availability/enhanced?${params}`)
         const data = await res.json()
+        if (data.closed) setClosedReason(data.closedReason || 'Geschlossen')
         if (data.type === 'smart') {
           setAvailableSlots(
             (data.preferredStaffAvailableSlots || []).map((slot: TimeSlot) => ({
@@ -207,6 +233,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
               available: true,
               staffId: selectedStaff.id,
               staffName: selectedStaff.name,
+              staffImageUrl: selectedStaff.imageUrl ?? null,
             }))
           )
           if (data.fallbackNextAvailable) {
@@ -223,6 +250,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
         })
         const res = await fetch(`/api/availability/enhanced?${params}`)
         const data = await res.json()
+        if (data.closed) setClosedReason(data.closedReason || 'Geschlossen')
         if (data.type === 'aggregated' && data.staffDetails) {
           setAvailableSlots(combineStaffAvailabilitySlots(data.staffDetails))
         } else {
@@ -241,6 +269,18 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       toast.error('Bitte füllen Sie alle Pflichtfelder aus')
       return
     }
+    if (requiredFields.phone && !customerPhone.trim()) {
+      toast.error('Bitte geben Sie eine Telefonnummer an')
+      return
+    }
+    if (requiredFields.notes && !notes.trim()) {
+      toast.error('Bitte füllen Sie das Anmerkungsfeld aus')
+      return
+    }
+    if (!privacyNoticeAccepted) {
+      toast.error('Bitte bestätigen Sie die Datenschutzinformationen')
+      return
+    }
     setSubmitting(true)
     try {
       const res = await fetch('/api/bookings/enhanced', {
@@ -256,9 +296,20 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
           startTime: selectedSlot.startTime,
           endTime: selectedSlot.endTime,
           notes: notes || undefined,
+          privacyNoticeAccepted,
         }),
       })
-      const result = await res.json()
+      const result = await res.json().catch(() => ({}))
+      // 409 = the slot was taken by someone else between selection and submit.
+      // Send the customer back to the time picker and refresh availability so
+      // the now-unavailable slot disappears from the list.
+      if (res.status === 409) {
+        toast.error('Dieser Termin ist leider nicht mehr verfügbar. Bitte wählen Sie einen anderen Termin.')
+        setSelectedSlot(null)
+        setStep(4)
+        fetchAvailability()
+        return
+      }
       if (!res.ok) throw new Error(result.error || 'Booking failed')
       setManageUrl(result.manageUrl || null)
       toast.success('Buchung erfolgreich! Wir bestätigen per E-Mail.')
@@ -279,6 +330,16 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   }
 
   const today = new Date()
+  const selectedBookingStaff =
+    selectedStaff ||
+    staffMembers.find((staff) => staff.id === selectedSlot?.staffId) ||
+    (selectedSlot?.staffName
+      ? {
+          id: selectedSlot.staffId || 'selected-staff',
+          name: selectedSlot.staffName,
+          imageUrl: selectedSlot.staffImageUrl ?? null,
+        }
+      : null)
 
   if (loading && !org) {
     return (
@@ -449,15 +510,24 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                   <button
                     key={staff.id}
                     onClick={() => { setSelectedStaff(staff); setLoading(true); setStep(4) }}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-all hover:border-blue-500 ${
+                    className={`w-full p-3 sm:p-4 rounded-xl border-2 text-left transition-all hover:border-blue-500 hover:shadow-sm ${
                       selectedStaff?.id === staff.id
                         ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
+                        : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-slate-800'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <User className="w-5 h-5 text-blue-600" />
-                      <div className="font-medium dark:text-white">{staff.name}</div>
+                      <ResourceAvatar
+                        name={staff.name}
+                        imageUrl={staff.imageUrl}
+                        className="h-14 w-14"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-900 dark:text-white">{staff.name}</div>
+                        <div className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                          Persönliche Auswahl
+                        </div>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -510,6 +580,14 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
               </div>
             ) : (
               <>
+                {closedReason && (
+                  <div className="mb-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/50 p-4 text-center">
+                    <div className="font-medium text-gray-900 dark:text-white">An diesem Tag geschlossen</div>
+                    {closedReason !== 'Geschlossen' && (
+                      <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{closedReason}</div>
+                    )}
+                  </div>
+                )}
                 {fallbackReason && (
                   <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     <div className="font-medium">Hinweis</div>
@@ -525,6 +603,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                               staffMembers.find((s) => s.id === fallbackSlot.staffId) || {
                                 id: fallbackSlot.staffId,
                                 name: fallbackSlot.staffName || 'Mitarbeiter',
+                                imageUrl: fallbackSlot.staffImageUrl ?? null,
                               }
                             )
                           }
@@ -552,7 +631,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                       {formatTime(slot.startTime)}
                     </button>
                   ))}
-                  {availableSlots.filter((s) => s.available).length === 0 && (
+                  {!closedReason && availableSlots.filter((s) => s.available).length === 0 && (
                     <div className="col-span-full text-center py-4 text-gray-500">
                       Keine freien Termine für dieses Datum
                     </div>
@@ -580,25 +659,44 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 <Input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="max@example.de" required />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-200">Telefon (optional)</label>
-                <Input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+49 123 456789" />
+                <label className="block text-sm font-medium mb-1 dark:text-gray-200">
+                  Telefon {requiredFields.phone ? '*' : '(optional)'}
+                </label>
+                <Input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+49 123 456789" required={requiredFields.phone} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-200">Anmerkungen (optional)</label>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-200">
+                  Anmerkungen {requiredFields.notes ? '*' : '(optional)'}
+                </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Besondere Wünsche..."
                   className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
                   rows={3}
+                  required={requiredFields.notes}
                 />
               </div>
-              <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
+              <div className="bg-gray-50 dark:bg-slate-700 rounded-xl p-4">
                 <h3 className="font-medium mb-2 dark:text-white">Zusammenfassung</h3>
-                <div className="text-sm space-y-1 text-gray-600 dark:text-gray-300">
+                <div className="text-sm space-y-2 text-gray-600 dark:text-gray-300">
                   <p><span className="font-medium">Standort:</span> {selectedLocation?.name}</p>
                   <p><span className="font-medium">Leistung:</span> {selectedOffering?.name}</p>
-                  <p><span className="font-medium">Mitarbeiter:</span> {selectedStaff?.name || selectedSlot?.staffName || 'Keine Präferenz'}</p>
+                  <div className="flex items-center gap-3 rounded-lg bg-white p-3 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-600">
+                    <ResourceAvatar
+                      name={selectedBookingStaff?.name || 'Keine Präferenz'}
+                      imageUrl={selectedBookingStaff?.imageUrl}
+                      className="h-12 w-12"
+                    />
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Mitarbeiter
+                      </div>
+                      <div className="font-semibold text-gray-900 dark:text-white">
+                        {selectedBookingStaff?.name || 'Keine Präferenz'}
+                      </div>
+                    </div>
+                  </div>
                   <p><span className="font-medium">Datum:</span> {selectedDate.toLocaleDateString('de-DE')}</p>
                   <p><span className="font-medium">Uhrzeit:</span> {selectedSlot && formatTime(selectedSlot.startTime)}</p>
                   {getShowPrices(org?.settings) && (
@@ -606,7 +704,23 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                   )}
                 </div>
               </div>
-              <Button onClick={handleSubmit} disabled={submitting || !customerName || !customerEmail} className="w-full">
+              <PublicBookingPrivacyNotice
+                checked={privacyNoticeAccepted}
+                onCheckedChange={setPrivacyNoticeAccepted}
+                privacyUrl={getPrivacyPolicyUrl(org?.settings)}
+              />
+              <Button
+                onClick={handleSubmit}
+                disabled={
+                  submitting ||
+                  !customerName ||
+                  !customerEmail ||
+                  !privacyNoticeAccepted ||
+                  (requiredFields.phone && !customerPhone.trim()) ||
+                  (requiredFields.notes && !notes.trim())
+                }
+                className="w-full"
+              >
                 {submitting ? 'Wird gebucht...' : 'Termin buchen'}
               </Button>
             </div>
@@ -636,6 +750,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
             <Button onClick={() => window.location.reload()}>Neuen Termin buchen</Button>
           </div>
         )}
+        <PublicBookingFooter privacyUrl={getPrivacyPolicyUrl(org?.settings)} />
       </div>
     </div>
   )

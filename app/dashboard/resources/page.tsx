@@ -18,11 +18,17 @@ import { isMockMode } from '@/lib/utils/mock';
 import { mockResources } from '@/lib/mock-data';
 import { getPrimaryLocationId, getPrimaryOrganizationId } from '@/lib/utils/supabase-helpers';
 import { ResourceForm } from '@/components/ResourceForm';
+import { ResourceAvatar } from '@/components/ResourceAvatar';
+import { ResourceImageUploadControl } from '@/components/ResourceImageUploadControl';
 
 interface Resource {
   id: string;
   name: string;
   type: string;
+  organization_id?: string;
+  organizationId?: string;
+  image_url?: string | null;
+  imageUrl?: string | null;
 }
 
 export default function ResourcesPage() {
@@ -40,6 +46,8 @@ export default function ResourcesPage() {
           id: resource.id,
           name: resource.name,
           type: resource.type,
+          organization_id: resource.organization_id,
+          image_url: resource.image_url ?? null,
         }));
         setResources(mapped);
         return;
@@ -67,6 +75,13 @@ export default function ResourcesPage() {
     }
 
     fetchResources();
+  };
+
+  const handleUpdated = (updatedResource: unknown) => {
+    const updated = updatedResource as Resource;
+    setResources((prev) =>
+      prev.map((resource) => (resource.id === updated.id ? { ...resource, ...updated } : resource))
+    );
   };
 
   const handleDelete = async (id: string) => {
@@ -139,11 +154,18 @@ export default function ResourcesPage() {
               className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow dark:border-slate-800 dark:bg-slate-900"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate dark:text-slate-100">{resource.name}</h3>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    Typ: {typeLabels[resource.type] || resource.type}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <ResourceAvatar
+                    name={resource.name}
+                    imageUrl={resource.image_url ?? resource.imageUrl}
+                    className="h-12 w-12"
+                  />
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate dark:text-slate-100">{resource.name}</h3>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                      Typ: {typeLabels[resource.type] || resource.type}
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={() => handleDelete(resource.id)}
@@ -153,6 +175,9 @@ export default function ResourcesPage() {
                   ✕
                 </button>
               </div>
+              {resource.type === 'staff' && (
+                <ResourceImageUploadControl resource={resource} onUpdated={handleUpdated} />
+              )}
             </div>
           ))}
         </div>

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
+import { normalizeResourceImageUrl } from '@/lib/resource-images.mjs'
 import { z } from 'zod'
 
 const updateResourceSchema = z.object({
@@ -9,8 +10,20 @@ const updateResourceSchema = z.object({
   type: z.enum(['staff', 'table', 'room', 'equipment']).optional(),
   capacity: z.number().int().positive().optional(),
   isActive: z.boolean().optional(),
+  imageUrl: z.string().nullable().optional(),
   skills: z.array(z.string()).optional(),
 })
+
+function toResourceUpdate(data: z.infer<typeof updateResourceSchema>) {
+  const updates: Record<string, unknown> = {}
+  if (data.name !== undefined) updates.name = data.name
+  if (data.type !== undefined) updates.type = data.type
+  if (data.capacity !== undefined) updates.capacity = data.capacity
+  if (data.isActive !== undefined) updates.is_active = data.isActive
+  if (data.skills !== undefined) updates.skills = data.skills
+  if (data.imageUrl !== undefined) updates.image_url = normalizeResourceImageUrl(data.imageUrl)
+  return updates
+}
 
 /**
  * GET /api/resources/[id]
@@ -81,6 +94,16 @@ export async function PATCH(
       )
     }
 
+    let updates: Record<string, unknown>
+    try {
+      updates = toResourceUpdate(validationResult.data)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Ungültige Bild-URL' },
+        { status: 400 }
+      )
+    }
+
     const client = await createClient()
 
     // Get resource
@@ -109,7 +132,7 @@ export async function PATCH(
     // Update
     const { data: updated, error: updateError } = await client
       .from('resources')
-      .update(validationResult.data)
+      .update(updates)
       .eq('id', id)
       .select()
       .single() as any

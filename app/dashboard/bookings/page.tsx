@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Filter, BookOpen, Search } from 'lucide-react';
+import { Plus, Filter, BookOpen, Search, Phone, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockBookings, mockLocations, mockOfferings, mockResources } from '@/lib/mock-data';
@@ -26,6 +26,7 @@ interface Booking {
   guest_name?: string;
   customer_name?: string;
   customer_email?: string;
+  customer_phone?: string;
   notes?: string;
   location?: {
     name: string;
@@ -441,6 +442,8 @@ export default function BookingsPage() {
               endTime={booking.end_time}
               status={booking.status}
               guestName={booking.guest_name || booking.customer_name}
+              guestPhone={booking.customer_phone}
+              guestEmail={booking.customer_email}
               onEdit={() => openEditModal(booking)}
               onDelete={handleDelete}
             />
@@ -576,6 +579,34 @@ export default function BookingsPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Kontaktdaten des Kunden (read-only) */}
+            {editBooking && (
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                <p className="font-medium text-gray-900 dark:text-slate-100">
+                  {editBooking.guest_name || editBooking.customer_name || 'Gast'}
+                </p>
+                <div className="mt-1 space-y-1 text-gray-600 dark:text-slate-400">
+                  {editBooking.customer_phone ? (
+                    <a href={`tel:${editBooking.customer_phone}`} className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400">
+                      <Phone className="h-4 w-4 flex-shrink-0" />
+                      {editBooking.customer_phone}
+                    </a>
+                  ) : (
+                    <p className="flex items-center gap-2 text-gray-400 dark:text-slate-500">
+                      <Phone className="h-4 w-4 flex-shrink-0" />
+                      Keine Telefonnummer angegeben
+                    </p>
+                  )}
+                  {editBooking.customer_email && (
+                    <a href={`mailto:${editBooking.customer_email}`} className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400">
+                      <Mail className="h-4 w-4 flex-shrink-0" />
+                      {editBooking.customer_email}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Date & Time */}
             <div className="grid grid-cols-2 gap-4">
               <div>

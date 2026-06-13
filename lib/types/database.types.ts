@@ -186,6 +186,7 @@ export interface Database {
           capacity: number
           created_at: string
           id: string
+          image_url: string | null
           is_active: boolean
           location_id: string
           name: string
@@ -197,6 +198,7 @@ export interface Database {
           capacity?: number
           created_at?: string
           id?: string
+          image_url?: string | null
           is_active?: boolean
           location_id: string
           name: string
@@ -208,6 +210,7 @@ export interface Database {
           capacity?: number
           created_at?: string
           id?: string
+          image_url?: string | null
           is_active?: boolean
           location_id?: string
           name?: string

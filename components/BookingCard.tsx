@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { MapPin, Clock, Edit2, Trash2 } from 'lucide-react';
+import { MapPin, Clock, Edit2, Trash2, Phone, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface BookingCardProps {
@@ -10,6 +10,8 @@ interface BookingCardProps {
   endTime: string;
   status?: 'confirmed' | 'pending' | 'cancelled';
   guestName?: string;
+  guestPhone?: string | null;
+  guestEmail?: string | null;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
@@ -27,6 +29,8 @@ export function BookingCard({
   endTime,
   status = 'pending',
   guestName,
+  guestPhone,
+  guestEmail,
   onEdit,
   onDelete,
 }: BookingCardProps) {
@@ -66,6 +70,31 @@ export function BookingCard({
             </p>
           </div>
         </div>
+
+        {(guestPhone || guestEmail) && (
+          <div className="space-y-1.5 text-sm text-gray-600 dark:text-slate-400">
+            {guestPhone && (
+              <a
+                href={`tel:${guestPhone}`}
+                className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400"
+                title="Anrufen"
+              >
+                <Phone className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{guestPhone}</span>
+              </a>
+            )}
+            {guestEmail && (
+              <a
+                href={`mailto:${guestEmail}`}
+                className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400"
+                title="E-Mail senden"
+              >
+                <Mail className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{guestEmail}</span>
+              </a>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-2 border-t border-gray-100 pt-3 dark:border-slate-800">
           {onEdit && (

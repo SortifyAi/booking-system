@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
+import { normalizeResourceImageUrl } from '@/lib/resource-images.mjs'
 import { z } from 'zod'
 
 const createResourceSchema = z.object({
@@ -10,6 +11,7 @@ const createResourceSchema = z.object({
   name: z.string().min(1),
   type: z.enum(['staff', 'table', 'room', 'equipment']),
   capacity: z.number().int().positive().default(1),
+  imageUrl: z.string().nullable().optional(),
 })
 
 /**
@@ -81,7 +83,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { organizationId, locationId, name, type, capacity } = validationResult.data
+    const { organizationId, locationId, name, type, capacity, imageUrl } = validationResult.data
+    let normalizedImageUrl: string | null = null
+    try {
+      normalizedImageUrl = normalizeResourceImageUrl(imageUrl)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Ungültige Bild-URL' },
+        { status: 400 }
+      )
+    }
 
     const client = await createClient()
 
@@ -109,16 +120,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ungültiger Standort' }, { status: 400 })
     }
 
+    const insertPayload: Record<string, unknown> = {
+      organization_id: organizationId,
+      location_id: locationId,
+      name,
+      type,
+      capacity,
+    }
+    if (normalizedImageUrl) {
+      insertPayload.image_url = normalizedImageUrl
+    }
+
     // Create resource
     const { data: resource, error: createError } = await client
       .from('resources')
-      .insert({
-        organization_id: organizationId,
-        location_id: locationId,
-        name,
-        type,
-        capacity,
-      })
+      .insert(insertPayload)
       .select()
       .single() as any
 

@@ -17,6 +17,7 @@ const createBookingSchema = z.object({
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   notes: z.string().optional(),
+  privacyNoticeAccepted: z.boolean().optional(),
 })
 
 /**
@@ -122,10 +123,18 @@ export async function POST(request: NextRequest) {
       startTime,
       endTime,
       notes,
+      privacyNoticeAccepted,
     } = validationResult.data
 
     const client = await createClient()
     const user = await getUser()
+
+    if (!user && privacyNoticeAccepted !== true) {
+      return NextResponse.json(
+        { error: 'Bitte bestätigen Sie die Datenschutzinformationen', code: 'PRIVACY_NOTICE_REQUIRED' },
+        { status: 400 }
+      )
+    }
 
     // Auto-assign staff if not selected: find staff with fewest bookings at this time
     let finalResourceId = selectedResourceId
@@ -249,7 +258,10 @@ export async function POST(request: NextRequest) {
         end_time: endTime,
         notes: notes || null,
         status: 'confirmed',
-        metadata: {},
+        metadata: {
+          privacyNoticeAccepted: !user ? true : undefined,
+          privacyNoticeAcceptedAt: !user ? new Date().toISOString() : undefined,
+        },
       })
       .select()
       .single() as any

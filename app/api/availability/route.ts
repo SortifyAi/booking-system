@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/server/db'
 import { AvailabilitySlot } from '@/types/models'
 import { z } from 'zod'
-import { parse, addMinutes, format, setHours, setMinutes } from 'date-fns'
+import { parse, addMinutes, format } from 'date-fns'
 import { BUSINESS_HOURS } from '@/lib/constants'
+import { zonedTimeToUtc } from '@/lib/timezone'
+import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
 
 const availabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -48,9 +50,21 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
     )
   }
 
+  // Opening hours are wall-clock times in the location's timezone; the slots
+  // must be built in that timezone, not the server's (see lib/timezone.ts).
+  const timezone = location.timezone || 'Europe/Berlin'
+
   // Get schedules for the day
   const dateObj = parse(date, 'yyyy-MM-dd', new Date())
   const dayOfWeek = dateObj.getDay()
+
+  // A public holiday (per Bundesland) or an owner exception can close the day or
+  // override its hours; an exception always wins over the holiday calendar.
+  const closedReason = await resolveClosedReason(location.settings, date)
+  if (closedReason) {
+    return NextResponse.json({ slots: [], closed: true, closedReason })
+  }
+  const exceptionWindow = getExceptionWindow(location.settings, date)
 
   const { data: schedules, error: schedError } = await client
     .from('schedules')
@@ -63,7 +77,10 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
 
   // Fallback: Öffnungszeiten aus location.settings, sonst BUSINESS_HOURS
   let effectiveSchedules
-  if (schedules && schedules.length > 0) {
+  if (exceptionWindow) {
+    // Custom hours for this date override schedules and opening hours.
+    effectiveSchedules = [{ start_time: `${exceptionWindow.open}:00`, end_time: `${exceptionWindow.close}:00` }]
+  } else if (schedules && schedules.length > 0) {
     effectiveSchedules = schedules
   } else {
     const openingHours: any[] = location.settings?.openingHours ?? []
@@ -112,8 +129,8 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
     const [startHour, startMin] = schedule.start_time.split(':').map(Number)
     const [endHour, endMin] = schedule.end_time.split(':').map(Number)
 
-    let slotStart = setMinutes(setHours(dateObj, startHour), startMin)
-    const dayEnd = setMinutes(setHours(dateObj, endHour), endMin)
+    let slotStart = zonedTimeToUtc(date, startHour, startMin, timezone)
+    const dayEnd = zonedTimeToUtc(date, endHour, endMin, timezone)
 
     while (slotStart.getTime() + durationMinutes * 60000 <= dayEnd.getTime()) {
       const slotEnd = addMinutes(slotStart, durationMinutes)

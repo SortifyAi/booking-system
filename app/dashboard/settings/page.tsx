@@ -11,7 +11,8 @@ import { useRouter } from 'next/navigation';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockUser } from '@/lib/mock-data';
-import { getCancellationCutoffHours, getShowPrices, getShowDuration } from '@/lib/booking-policy';
+import { getCancellationCutoffHours, getShowPrices, getShowDuration, getRequiredCustomerFields, getPrivacyPolicyUrl, getAvvAcceptance, CURRENT_AVV_VERSION, type RequiredCustomerFields, type AvvAcceptance } from '@/lib/booking-policy';
+import Link from 'next/link';
 
 interface UserSettings {
   email?: string;
@@ -33,6 +34,11 @@ export default function SettingsPage() {
   const [cutoffHours, setCutoffHours] = useState<number>(24);
   const [showPrices, setShowPrices] = useState(true);
   const [showDuration, setShowDuration] = useState(true);
+  const [requiredFields, setRequiredFields] = useState<RequiredCustomerFields>({ phone: false, notes: false });
+  const [privacyUrl, setPrivacyUrl] = useState('');
+  const [savingPrivacyUrl, setSavingPrivacyUrl] = useState(false);
+  const [avvAcceptance, setAvvAcceptance] = useState<AvvAcceptance>({ acceptedAt: null, version: null });
+  const [acceptingAvv, setAcceptingAvv] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +59,10 @@ export default function SettingsPage() {
         setCutoffHours(getCancellationCutoffHours(org.settings));
         setShowPrices(getShowPrices(org.settings));
         setShowDuration(getShowDuration(org.settings));
+        setRequiredFields(getRequiredCustomerFields(org.settings));
+        const storedPrivacyUrl = (org.settings as Record<string, unknown> | null)?.privacyPolicyUrl;
+        setPrivacyUrl(typeof storedPrivacyUrl === 'string' ? storedPrivacyUrl : '');
+        setAvvAcceptance(getAvvAcceptance(org.settings));
       }
     } catch (err) {
       console.log('No organization found');
@@ -139,6 +149,41 @@ export default function SettingsPage() {
     }
   };
 
+  const savePrivacyUrl = async () => {
+    if (!organization) return;
+    const trimmed = privacyUrl.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      toast.error('Bitte eine vollständige URL angeben (mit https://)');
+      return;
+    }
+    setSavingPrivacyUrl(true);
+    try {
+      // Empty string = remove → booking page falls back to the platform notice.
+      await saveOrgSettings({ privacyPolicyUrl: trimmed || null });
+      setPrivacyUrl(trimmed);
+      toast.success('Datenschutz-Link gespeichert');
+    } catch (error: any) {
+      toast.error(error?.message || 'Speichern fehlgeschlagen');
+    } finally {
+      setSavingPrivacyUrl(false);
+    }
+  };
+
+  const acceptAvv = async () => {
+    if (!organization) return;
+    setAcceptingAvv(true);
+    try {
+      const acceptedAt = new Date().toISOString();
+      await saveOrgSettings({ avvAcceptedAt: acceptedAt, avvVersion: CURRENT_AVV_VERSION });
+      setAvvAcceptance({ acceptedAt, version: CURRENT_AVV_VERSION });
+      toast.success('Auftragsverarbeitungsvertrag akzeptiert');
+    } catch (error: any) {
+      toast.error(error?.message || 'Speichern fehlgeschlagen');
+    } finally {
+      setAcceptingAvv(false);
+    }
+  };
+
   const toggleBookingVisibility = async (key: 'showPrices' | 'showDuration', value: boolean) => {
     if (!organization) return;
     if (key === 'showPrices') setShowPrices(value);
@@ -149,6 +194,20 @@ export default function SettingsPage() {
       // revert on failure
       if (key === 'showPrices') setShowPrices(!value);
       else setShowDuration(!value);
+      toast.error(error?.message || 'Speichern fehlgeschlagen');
+    }
+  };
+
+  const toggleRequiredField = async (key: keyof RequiredCustomerFields, value: boolean) => {
+    if (!organization) return;
+    const previous = requiredFields;
+    const next = { ...requiredFields, [key]: value };
+    setRequiredFields(next);
+    try {
+      await saveOrgSettings({ requiredCustomerFields: next });
+    } catch (error: any) {
+      // revert on failure
+      setRequiredFields(previous);
       toast.error(error?.message || 'Speichern fehlgeschlagen');
     }
   };
@@ -483,6 +542,126 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+
+          <div className="mt-5 border-t border-gray-100 dark:border-slate-800 pt-4 space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+              Link zu deiner Datenschutzerklärung
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                type="url"
+                inputMode="url"
+                placeholder="https://deine-website.de/datenschutz"
+                value={privacyUrl}
+                onChange={(e) => setPrivacyUrl(e.target.value)}
+                className="flex-1"
+              />
+              <Button onClick={savePrivacyUrl} disabled={savingPrivacyUrl}>
+                {savingPrivacyUrl ? 'Speichern...' : 'Speichern'}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              Für die Buchungsdaten deiner Kunden bist <strong>du</strong> der Verantwortliche im Sinne der DSGVO.
+              Hinterlege hier den Link zu deiner eigenen Datenschutzerklärung – er wird Kunden bei der
+              Online-Buchung angezeigt. Ohne Angabe verweisen wir auf die allgemeine BookaNord-Datenschutzinformation.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Required Fields */}
+      {organization && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1 dark:text-slate-100">Pflichtfelder bei der Buchung</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+            Lege fest, welche Angaben deine Kunden bei der Online-Buchung zwingend machen müssen.
+            Name und E-Mail sind immer erforderlich.
+          </p>
+
+          <div className="space-y-3">
+            {([
+              {
+                key: 'phone' as const,
+                label: 'Telefonnummer',
+                description: 'Kunden müssen eine Telefonnummer angeben',
+                value: requiredFields.phone,
+              },
+              {
+                key: 'notes' as const,
+                label: 'Anmerkungen',
+                description: 'Kunden müssen das Anmerkungsfeld ausfüllen',
+                value: requiredFields.notes,
+              },
+            ] as const).map((item) => (
+              <div key={item.key} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-slate-800 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{item.label}</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">{item.description}</p>
+                </div>
+                <button
+                  onClick={() => toggleRequiredField(item.key, !item.value)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                    item.value ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-600'
+                  }`}
+                  aria-pressed={item.value}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      item.value ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Auftragsverarbeitungsvertrag (AVV) */}
+      {organization && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1 dark:text-slate-100">Auftragsverarbeitungsvertrag (AVV)</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+            BookaNord verarbeitet die Buchungsdaten deiner Kunden in deinem Auftrag. Nach Art. 28 DSGVO
+            ist dafür ein Auftragsverarbeitungsvertrag erforderlich.
+          </p>
+
+          {avvAcceptance.acceptedAt ? (
+            <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm dark:border-green-900/40 dark:bg-green-950/30">
+              <p className="font-medium text-green-900 dark:text-green-200">AVV akzeptiert ✓</p>
+              <p className="mt-1 text-green-800 dark:text-green-300">
+                Angenommen am{' '}
+                {new Date(avvAcceptance.acceptedAt).toLocaleString('de-DE', {
+                  dateStyle: 'long',
+                  timeStyle: 'short',
+                })}{' '}
+                (Version {avvAcceptance.version || 'unbekannt'}).
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <Link href="/avv" target="_blank" className="font-medium text-green-800 underline dark:text-green-300">
+                  AVV ansehen
+                </Link>
+                {avvAcceptance.version !== CURRENT_AVV_VERSION && (
+                  <button onClick={acceptAvv} disabled={acceptingAvv} className="font-medium text-blue-700 underline dark:text-blue-300">
+                    Neue Version ({CURRENT_AVV_VERSION}) akzeptieren
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700 dark:text-slate-300">
+                Bitte lies den{' '}
+                <Link href="/avv" target="_blank" className="font-medium text-blue-700 underline dark:text-blue-300">
+                  Auftragsverarbeitungsvertrag
+                </Link>{' '}
+                und bestätige ihn für deine Organisation.
+              </p>
+              <Button onClick={acceptAvv} disabled={acceptingAvv}>
+                {acceptingAvv ? 'Wird gespeichert...' : 'AVV akzeptieren'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
