@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { createClient } from '@/lib/supabase/client';
 import {
   Select,
   SelectContent,
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { useCreateOffering } from '@/lib/hooks/use-offerings';
 import { useOrgLocationOptions } from '@/lib/hooks/use-org-location-options';
+import { uploadCompressedOfferingImage } from '@/lib/resource-image-upload.mjs';
 import { CreateOfferingSchema } from '@/lib/validations/schemas';
 import { isMockMode } from '@/lib/utils/mock';
 import { z } from 'zod';
@@ -42,6 +44,8 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
     durationMinutes: 60,
     price: '',
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const showOrganizationSelect = organizations.length > 1;
   const showLocationSelect = locations.length > 1;
@@ -102,14 +106,46 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
     }
 
     try {
-      const created = await mutateAsync(validation.data);
+      let created = await mutateAsync(validation.data) as any;
+
+      if (imageFile) {
+        if (isMockMode()) {
+          created = { ...created, image_url: URL.createObjectURL(imageFile) };
+        } else {
+          setUploadingImage(true);
+          const supabase = createClient();
+          const imageUrl = await uploadCompressedOfferingImage({
+            supabase,
+            file: imageFile,
+            organizationId: selectedOrganizationId,
+            offeringId: created.id,
+          });
+
+          const response = await fetch(`/api/offerings/${created.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || 'Bild konnte nicht gespeichert werden');
+          }
+
+          created = await response.json();
+        }
+      }
+
       toast.success('Leistung erfolgreich erstellt');
       setFormData({ name: '', description: '', durationMinutes: 60, price: '' });
+      setImageFile(null);
       onCreated?.(created);
       onCancel?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Leistung konnte nicht erstellt werden';
       toast.error(message);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -221,9 +257,29 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
         </div>
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+          Leistungsbild
+        </label>
+        <Input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+          className="mt-1"
+        />
+        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+          Optional. Wird in der Buchung nur angezeigt, wenn ein Bild vorhanden ist.
+        </p>
+        {imageFile && (
+          <p className="mt-1 text-xs font-medium text-gray-700 dark:text-slate-300">
+            Ausgewählt: {imageFile.name}
+          </p>
+        )}
+      </div>
+
       <div className="flex gap-2">
-        <Button type="submit" disabled={isPending} className="flex-1">
-          {isPending ? 'Speichern...' : 'Speichern'}
+        <Button type="submit" disabled={isPending || uploadingImage} className="flex-1">
+          {isPending || uploadingImage ? 'Speichern...' : 'Speichern'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
           Abbrechen

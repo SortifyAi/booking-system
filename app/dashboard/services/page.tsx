@@ -17,6 +17,7 @@ import { SkeletonGrid } from '@/components/ui/skeleton';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockOfferings } from '@/lib/mock-data';
 import { OfferingForm } from '@/components/OfferingForm';
+import { OfferingImageUploadControl } from '@/components/OfferingImageUploadControl';
 
 interface Service {
   id: string;
@@ -24,6 +25,10 @@ interface Service {
   description?: string;
   duration: number;
   price?: number;
+  organization_id?: string;
+  organizationId?: string;
+  image_url?: string | null;
+  imageUrl?: string | null;
 }
 
 export default function ServicesPage() {
@@ -41,6 +46,10 @@ export default function ServicesPage() {
       description: offering.description || undefined,
       duration,
       price: typeof priceCents === 'number' ? priceCents / 100 : undefined,
+      organization_id: offering.organization_id,
+      organizationId: offering.organizationId,
+      image_url: offering.image_url ?? offering.imageUrl ?? null,
+      imageUrl: offering.imageUrl ?? offering.image_url ?? null,
     };
   };
 
@@ -55,6 +64,8 @@ export default function ServicesPage() {
           description: offering.description || undefined,
           duration: offering.duration_minutes,
           price: offering.price_cents ? offering.price_cents / 100 : undefined,
+          organization_id: offering.organization_id,
+          image_url: offering.image_url ?? null,
         }));
         setServices(mapped);
         return;
@@ -72,6 +83,8 @@ export default function ServicesPage() {
         description: offering.description || undefined,
         duration: offering.duration_minutes,
         price: offering.price_cents ? offering.price_cents / 100 : undefined,
+        organization_id: offering.organization_id,
+        image_url: offering.image_url ?? null,
       }));
       setServices(mapped);
     } catch (error) {
@@ -89,6 +102,13 @@ export default function ServicesPage() {
     }
 
     fetchServices();
+  };
+
+  const handleUpdated = (updatedOffering: unknown) => {
+    const updated = mapOfferingToService(updatedOffering);
+    setServices((prev) =>
+      prev.map((service) => (service.id === updated.id ? { ...service, ...updated } : service))
+    );
   };
 
   const handleDelete = async (id: string) => {
@@ -154,14 +174,24 @@ export default function ServicesPage() {
               className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow dark:border-slate-800 dark:bg-slate-900"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate dark:text-slate-100">{service.name}</h3>
-                  {service.description && (
-                    <p className="mt-1 text-sm text-gray-600 line-clamp-2 dark:text-slate-400">{service.description}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                  {(service.image_url ?? service.imageUrl) && (
+                    <img
+                      src={service.image_url ?? service.imageUrl ?? ''}
+                      alt={`${service.name} Bild`}
+                      className="h-14 w-14 flex-shrink-0 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-slate-700"
+                      loading="lazy"
+                    />
                   )}
-                  <div className="mt-2 space-y-1 text-xs text-gray-500 dark:text-slate-400">
-                    <p>Dauer: {service.duration} Min</p>
-                    {service.price !== undefined && <p>Preis: €{service.price.toFixed(2)}</p>}
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate dark:text-slate-100">{service.name}</h3>
+                    {service.description && (
+                      <p className="mt-1 text-sm text-gray-600 line-clamp-2 dark:text-slate-400">{service.description}</p>
+                    )}
+                    <div className="mt-2 space-y-1 text-xs text-gray-500 dark:text-slate-400">
+                      <p>Dauer: {service.duration} Min</p>
+                      {service.price !== undefined && <p>Preis: €{service.price.toFixed(2)}</p>}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -172,6 +202,7 @@ export default function ServicesPage() {
                   ✕
                 </button>
               </div>
+              <OfferingImageUploadControl offering={service} onUpdated={handleUpdated} />
             </div>
           ))}
         </div>

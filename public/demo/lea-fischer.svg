@@ -1,0 +1,15 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Lea Fischer</title>
+  <desc id="desc">Stilisiertes Demo-Portrait fuer die Bookanord Beispielbuchung</desc>
+  <rect width="240" height="240" rx="120" fill="#F7F2FF"/>
+  <circle cx="183" cy="63" r="44" fill="#D8C5FF" opacity=".82"/>
+  <circle cx="59" cy="184" r="55" fill="#B7F0E5" opacity=".9"/>
+  <path d="M65 203c8-36 30-58 55-58s47 22 55 58H65Z" fill="#0F766E"/>
+  <circle cx="120" cy="104" r="40" fill="#F0B992"/>
+  <path d="M77 119c-7-38 11-70 47-74 35-3 58 22 55 65-16-16-34-25-56-25-18 0-33 10-46 34Z" fill="#5A2E48"/>
+  <path d="M89 113c6 23 18 36 31 36s25-13 31-36c-22 7-40 7-62 0Z" fill="#F0B992"/>
+  <circle cx="106" cy="105" r="4" fill="#231528"/>
+  <circle cx="134" cy="105" r="4" fill="#231528"/>
+  <path d="M109 127c7 6 15 6 22 0" stroke="#231528" stroke-width="5" stroke-linecap="round"/>
+  <path d="M78 121c11-19 19-37 47-42" stroke="#5A2E48" stroke-width="13" stroke-linecap="round"/>
+</svg>

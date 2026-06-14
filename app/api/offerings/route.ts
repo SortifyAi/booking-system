@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
+import { normalizeResourceImageUrl } from '@/lib/resource-images.mjs'
 import { z } from 'zod'
 import { mockOfferings } from '@/lib/mock-data'
 import { isMockMode } from '@/lib/mock-mode'
@@ -15,6 +16,7 @@ const createOfferingSchema = z.object({
   capacity: z.number().int().positive().default(1),
   priceCents: z.number().int().nonnegative().optional(),
   color: z.string().optional(),
+  imageUrl: z.string().nullable().optional(),
 })
 
 /**
@@ -95,8 +97,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { organizationId, locationId, name, description, durationMinutes, capacity, priceCents, color } =
+    const { organizationId, locationId, name, description, durationMinutes, capacity, priceCents, color, imageUrl } =
       validationResult.data
+    let normalizedImageUrl: string | null = null
+    try {
+      normalizedImageUrl = normalizeResourceImageUrl(imageUrl)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Ungültige Bild-URL' },
+        { status: 400 }
+      )
+    }
 
     const client = await createClient()
 
@@ -124,19 +135,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ungültiger Standort' }, { status: 400 })
     }
 
+    const insertPayload: Record<string, unknown> = {
+      organization_id: organizationId,
+      location_id: locationId,
+      name,
+      description,
+      duration_minutes: durationMinutes,
+      capacity,
+      price_cents: priceCents || null,
+      color,
+    }
+    if (normalizedImageUrl) {
+      insertPayload.image_url = normalizedImageUrl
+    }
+
     // Create offering
     const { data: offering, error: createError } = await client
       .from('offerings')
-      .insert({
-        organization_id: organizationId,
-        location_id: locationId,
-        name,
-        description,
-        duration_minutes: durationMinutes,
-        capacity,
-        price_cents: priceCents || null,
-        color,
-      })
+      .insert(insertPayload)
       .select()
       .single() as any
 

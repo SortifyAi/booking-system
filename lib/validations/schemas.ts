@@ -39,6 +39,7 @@ export const CreateOfferingSchema = z.object({
   capacity: z.number().int().positive().default(1),
   priceCents: z.number().int().nonnegative('Preis darf nicht negativ sein').optional(),
   color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Ungültiges Farbformat').optional(),
+  imageUrl: z.string().nullable().optional(),
 })
 
 export const UpdateOfferingSchema = z.object({
@@ -48,6 +49,7 @@ export const UpdateOfferingSchema = z.object({
   capacity: z.number().int().positive().optional(),
   priceCents: z.number().int().nonnegative().optional(),
   color: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
+  imageUrl: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
 })
 

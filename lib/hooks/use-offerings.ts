@@ -78,10 +78,13 @@ export function useCreateOffering() {
         return {
           id: `mock-off-${Date.now()}`,
           ...validation.data,
+          organization_id: resolvedOrgId,
+          location_id: resolvedLocationId,
           duration_minutes: validation.data.durationMinutes,
           price_cents: validation.data.priceCents || null,
           capacity: validation.data.capacity ?? 1,
           color: validation.data.color || '#2563EB',
+          image_url: validation.data.imageUrl ?? null,
           created_at: new Date().toISOString(),
         }
       }

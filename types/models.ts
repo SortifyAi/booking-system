@@ -43,6 +43,8 @@ export interface Offering {
   capacity: number
   priceCents: number | null
   color: string | null
+  imageUrl?: string | null
+  image_url?: string | null
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -186,6 +188,7 @@ export interface CreateOfferingRequest {
   capacity?: number
   priceCents?: number
   color?: string
+  imageUrl?: string | null
 }
 
 export interface UpdateOfferingRequest {
@@ -195,6 +198,7 @@ export interface UpdateOfferingRequest {
   capacity?: number
   priceCents?: number
   color?: string
+  imageUrl?: string | null
   isActive?: boolean
 }
 

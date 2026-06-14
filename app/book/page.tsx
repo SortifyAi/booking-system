@@ -24,6 +24,7 @@ interface Offering {
   duration_minutes: number
   price_cents: number
   color: string
+  image_url?: string | null
 }
 
 interface StaffMember {
@@ -451,18 +452,27 @@ export default function BookPage() {
                         : 'border-gray-200 dark:border-gray-700'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-3 h-3 rounded-full" 
-                          style={{ backgroundColor: offering.color }}
-                        />
-                        <div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        {offering.image_url ? (
+                          <img
+                            src={offering.image_url}
+                            alt={`${offering.name} Bild`}
+                            className="h-14 w-14 flex-shrink-0 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-slate-700"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div
+                            className="h-3 w-3 flex-shrink-0 rounded-full"
+                            style={{ backgroundColor: offering.color }}
+                          />
+                        )}
+                        <div className="min-w-0">
                           <div className="font-medium dark:text-white">{offering.name}</div>
                           <div className="text-sm text-gray-500">{offering.description}</div>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="shrink-0 text-right">
                         <div className="font-semibold dark:text-white">{formatPrice(offering.price_cents)}</div>
                         <div className="text-sm text-gray-500">{offering.duration_minutes} Min.</div>
                       </div>

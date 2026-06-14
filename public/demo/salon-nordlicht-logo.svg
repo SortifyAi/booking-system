@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="150" viewBox="0 0 520 150" role="img" aria-labelledby="title desc">
+  <title id="title">Salon Nordlicht Logo</title>
+  <desc id="desc">Demo-Logo fuer den Bookanord Buchungsflow</desc>
+  <rect width="520" height="150" rx="30" fill="#F8FAFC"/>
+  <circle cx="76" cy="75" r="36" fill="#DBEAFE"/>
+  <path d="M76 38 L86 65 L114 65 L91 81 L100 108 L76 91 L52 108 L61 81 L38 65 L66 65 Z" fill="#2563EB"/>
+  <path d="M76 53 L82 69 L99 69 L85 79 L90 95 L76 85 L62 95 L67 79 L53 69 L70 69 Z" fill="#14B8A6"/>
+  <text x="134" y="70" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800">Salon Nordlicht</text>
+  <text x="136" y="102" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600">Hair, Beauty &amp; Termine</text>
+</svg>

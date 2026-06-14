@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { Calendar, Clock, User, MapPin, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
 import { getShowPrices, getShowDuration, getRequiredCustomerFields, getPrivacyPolicyUrl } from '@/lib/booking-policy'
+import { getDemoStaffMembers, isDemoLocationId } from '@/lib/public-demo'
 import { format } from 'date-fns'
 
 interface OrgInfo {
@@ -33,6 +34,7 @@ interface Offering {
   duration_minutes: number
   price_cents: number
   color: string
+  image_url?: string | null
 }
 
 interface StaffMember {
@@ -73,6 +75,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [manageUrl, setManageUrl] = useState<string | null>(null)
+  const [demoSubmission, setDemoSubmission] = useState(false)
 
   const [customerName, setCustomerName] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
@@ -111,10 +114,10 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   }, [selectedOffering, selectedLocation])
 
   useEffect(() => {
-    if (selectedOffering && selectedLocation && selectedDate) {
+    if (selectedOffering && selectedLocation && selectedDate && step >= 4) {
       fetchAvailability()
     }
-  }, [selectedOffering, selectedLocation, selectedDate, selectedStaff])
+  }, [selectedOffering, selectedLocation, selectedDate, selectedStaff, step])
 
   async function fetchOrg() {
     setLoading(true)
@@ -155,6 +158,18 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   async function fetchStaffMembers(locationId: string, offeringId: string) {
     setLoading(true)
     try {
+      if (isDemoLocationId(locationId)) {
+        setStaffMembers(
+          getDemoStaffMembers(locationId).map((row, idx) => ({
+            id: row.id,
+            name: row.name,
+            imageUrl: row.image_url,
+            priority: idx,
+          }))
+        )
+        return
+      }
+
       const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === 'true'
       if (isMock) {
         setStaffMembers([
@@ -281,7 +296,19 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       toast.error('Bitte bestätigen Sie die Datenschutzinformationen')
       return
     }
+
+    if (isDemoLocationId(selectedLocation.id)) {
+      setSubmitting(true)
+      setDemoSubmission(true)
+      setManageUrl(null)
+      toast.success('Demo-Buchung simuliert. Es wurde kein echter Termin angelegt.')
+      setStep(6)
+      setSubmitting(false)
+      return
+    }
+
     setSubmitting(true)
+    setDemoSubmission(false)
     try {
       const res = await fetch('/api/bookings/enhanced', {
         method: 'POST',
@@ -454,10 +481,22 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                           : 'border-gray-200 dark:border-gray-700'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: offering.color }} />
-                          <div>
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                          {offering.image_url ? (
+                            <img
+                              src={offering.image_url}
+                              alt={`${offering.name} Bild`}
+                              className="h-14 w-14 flex-shrink-0 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-slate-700"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div
+                              className="h-3 w-3 flex-shrink-0 rounded-full"
+                              style={{ backgroundColor: offering.color }}
+                            />
+                          )}
+                          <div className="min-w-0">
                             <div className="font-medium dark:text-white">{offering.name}</div>
                             {offering.description && (
                               <div className="text-sm text-gray-500">{offering.description}</div>
@@ -733,9 +772,13 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
             <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
               <Check className="w-8 h-8 text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold mb-2 dark:text-white">Buchung erfolgreich!</h2>
+            <h2 className="text-2xl font-bold mb-2 dark:text-white">
+              {demoSubmission ? 'Demo abgeschlossen!' : 'Buchung erfolgreich!'}
+            </h2>
             <p className="text-gray-600 dark:text-gray-300 mb-6">
-              Vielen Dank für Ihre Buchung. Sie erhalten in Kürze eine Bestätigung per E-Mail.
+              {demoSubmission
+                ? 'So sieht der letzte Schritt für Kunden aus. In dieser Demo wurde kein echter Termin gespeichert.'
+                : 'Vielen Dank für Ihre Buchung. Sie erhalten in Kürze eine Bestätigung per E-Mail.'}
             </p>
             {manageUrl && (
               <div className="mb-6 rounded-lg border border-gray-200 dark:border-slate-700 p-4 text-sm">
@@ -747,7 +790,9 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 </a>
               </div>
             )}
-            <Button onClick={() => window.location.reload()}>Neuen Termin buchen</Button>
+            <Button onClick={() => window.location.reload()}>
+              {demoSubmission ? 'Demo neu starten' : 'Neuen Termin buchen'}
+            </Button>
           </div>
         )}
         <PublicBookingFooter privacyUrl={getPrivacyPolicyUrl(org?.settings)} />

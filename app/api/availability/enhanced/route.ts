@@ -7,6 +7,7 @@ import { parse, addMinutes, format } from 'date-fns'
 import { BUSINESS_HOURS } from '@/lib/constants'
 import { zonedTimeToUtc } from '@/lib/timezone'
 import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
+import { buildDemoAvailability, isDemoLocationId, isDemoOfferingId } from '@/lib/public-demo'
 
 const enhancedAvailabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -93,6 +94,16 @@ export async function GET(request: NextRequest) {
       mode,
       duration: customDuration,
     } = validationResult.data
+
+    if (isDemoLocationId(locationId) && isDemoOfferingId(offeringId)) {
+      return NextResponse.json(buildDemoAvailability({
+        date,
+        offeringId,
+        preferredStaffId: preferredStaffId || staffId,
+        aggregated,
+        mode,
+      }))
+    }
 
     const client = getSupabaseAdmin()
 

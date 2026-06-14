@@ -33,7 +33,7 @@ export default function AvvPage() {
 
       <p className="mt-6 text-sm leading-6 text-gray-700 dark:text-gray-300">
         Dieser Vertrag wird geschlossen zwischen dem die BookaNord-Plattform nutzenden Kunden
-        (nachfolgend <strong>„Verantwortlicher"</strong>) und
+        (nachfolgend <strong>Verantwortlicher</strong>) und
       </p>
       <p className="mt-2 rounded-lg bg-gray-50 p-4 text-sm dark:bg-slate-800/60">
         Pascal Raub – Flying Chair AI
@@ -45,7 +45,7 @@ export default function AvvPage() {
         E-Mail: info@flyingchair.cloud
       </p>
       <p className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
-        (nachfolgend <strong>„Auftragsverarbeiter"</strong>). Er konkretisiert die
+        (nachfolgend <strong>Auftragsverarbeiter</strong>). Er konkretisiert die
         datenschutzrechtlichen Pflichten der Parteien für die im Rahmen der Nutzung der
         BookaNord-Plattform durchgeführte Verarbeitung personenbezogener Daten.
       </p>

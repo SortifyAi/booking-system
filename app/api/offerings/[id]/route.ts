@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
+import { normalizeResourceImageUrl } from '@/lib/resource-images.mjs'
 import { z } from 'zod'
 
 const updateOfferingSchema = z.object({
@@ -11,8 +12,22 @@ const updateOfferingSchema = z.object({
   capacity: z.number().int().positive().optional(),
   priceCents: z.number().int().nonnegative().optional(),
   color: z.string().optional(),
+  imageUrl: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
 })
+
+function toOfferingUpdate(data: z.infer<typeof updateOfferingSchema>) {
+  const updates: Record<string, unknown> = {}
+  if (data.name !== undefined) updates.name = data.name
+  if (data.description !== undefined) updates.description = data.description
+  if (data.durationMinutes !== undefined) updates.duration_minutes = data.durationMinutes
+  if (data.capacity !== undefined) updates.capacity = data.capacity
+  if (data.priceCents !== undefined) updates.price_cents = data.priceCents
+  if (data.color !== undefined) updates.color = data.color
+  if (data.imageUrl !== undefined) updates.image_url = normalizeResourceImageUrl(data.imageUrl)
+  if (data.isActive !== undefined) updates.is_active = data.isActive
+  return updates
+}
 
 /**
  * GET /api/offerings/[id]
@@ -83,6 +98,16 @@ export async function PATCH(
       )
     }
 
+    let updates: Record<string, unknown>
+    try {
+      updates = toOfferingUpdate(validationResult.data)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Ungültige Bild-URL' },
+        { status: 400 }
+      )
+    }
+
     const client = await createClient()
 
     // Get offering
@@ -111,7 +136,7 @@ export async function PATCH(
     // Update
     const { data: updated, error: updateError } = await client
       .from('offerings')
-      .update(validationResult.data)
+      .update(updates)
       .eq('id', id)
       .select()
       .single() as any

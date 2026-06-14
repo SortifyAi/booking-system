@@ -1,0 +1,14 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Mira Hansen</title>
+  <desc id="desc">Stilisiertes Demo-Portrait fuer die Bookanord Beispielbuchung</desc>
+  <rect width="240" height="240" rx="120" fill="#DFF7F1"/>
+  <circle cx="184" cy="62" r="42" fill="#9FE7D8" opacity=".85"/>
+  <circle cx="61" cy="189" r="54" fill="#CFE0FF" opacity=".95"/>
+  <path d="M66 202c8-35 29-56 54-56s46 21 54 56H66Z" fill="#214E6A"/>
+  <circle cx="120" cy="104" r="40" fill="#F4C7A8"/>
+  <path d="M75 105c2-42 27-68 65-60 27 6 43 31 37 64-22-11-47-20-102-4Z" fill="#17324D"/>
+  <path d="M88 112c6 22 19 37 32 37s26-15 32-37c-24 8-41 8-64 0Z" fill="#F4C7A8"/>
+  <circle cx="106" cy="105" r="4" fill="#123047"/>
+  <circle cx="134" cy="105" r="4" fill="#123047"/>
+  <path d="M109 127c7 6 15 6 22 0" stroke="#123047" stroke-width="5" stroke-linecap="round"/>
+</svg>

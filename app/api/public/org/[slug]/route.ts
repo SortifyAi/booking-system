@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { mockOrganizations, mockLocations } from '@/lib/mock-data'
 import { isMockMode } from '@/lib/mock-mode'
+import { demoLocations, demoOrganization, isDemoBookingSlug } from '@/lib/public-demo'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params
+
+  if (isDemoBookingSlug(slug)) {
+    return NextResponse.json({ org: demoOrganization, locations: demoLocations })
+  }
 
   if (isMockMode()) {
     const org = mockOrganizations.find((o) => o.slug === slug)
