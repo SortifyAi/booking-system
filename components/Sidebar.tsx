@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
   CalendarOff,
   Award,
+  ShieldBan,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -44,6 +45,7 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { name: 'Personal', href: '/dashboard/resources', icon: Users },
       { name: 'Fähigkeiten', href: '/dashboard/skills', icon: Award, mockOnly: true },
       { name: 'Abwesenheiten', href: '/dashboard/blocks', icon: CalendarOff },
+      { name: 'Kundensperren', href: '/dashboard/customer-blocks', icon: ShieldBan },
     ],
   },
   {

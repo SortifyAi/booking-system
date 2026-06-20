@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { addDays, format, startOfWeek } from 'date-fns';
 import {
+  getCalendarStaffColumns,
   getCalendarNavigationStep,
+  getCompactStaffLabel,
   getResponsiveWeekDayCount,
   getVisibleWeekDays,
-} from './calendar-responsive';
+} from './calendar-responsive.ts';
 
 const weekStart = startOfWeek(new Date('2026-05-25T12:00:00'), { weekStartsOn: 1 });
 const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
@@ -33,8 +35,34 @@ assert.deepEqual(
 );
 
 assert.equal(getResponsiveWeekDayCount(390), 1);
-assert.equal(getResponsiveWeekDayCount(820), 3);
+assert.equal(getResponsiveWeekDayCount(820), 1);
 assert.equal(getResponsiveWeekDayCount(1280), 7);
+
+assert.equal(getCompactStaffLabel('Lea Fischer'), 'LF');
+assert.equal(getCompactStaffLabel('Jonas'), 'JO');
+
+const staff = [
+  { id: 'lea', name: 'Lea Fischer', color: '#8B5CF6' },
+  { id: 'jonas', name: 'Jonas Meyer', color: '#3B82F6' },
+];
+
+assert.deepEqual(
+  getCalendarStaffColumns(staff, 'all', true).map(({ id, kind, compactLabel }) => ({
+    id,
+    kind,
+    compactLabel,
+  })),
+  [
+    { id: 'lea', kind: 'staff', compactLabel: 'LF' },
+    { id: 'jonas', kind: 'staff', compactLabel: 'JM' },
+    { id: '', kind: 'unassigned', compactLabel: '?' },
+  ],
+);
+
+assert.deepEqual(
+  getCalendarStaffColumns(staff, 'lea', false).map(({ id }) => id),
+  ['lea'],
+);
 
 assert.equal(getCalendarNavigationStep('day', 1), 1);
 assert.equal(getCalendarNavigationStep('week', 1), 1);

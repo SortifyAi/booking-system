@@ -35,6 +35,17 @@ interface Booking {
   staff_color?: string;
 }
 
+interface Block {
+  id: string;
+  start_time: string;
+  end_time: string;
+  resource_id?: string | null;
+  staff_id?: string | null;
+  staff_name?: string;
+  reason?: string | null;
+  type: string;
+}
+
 interface Staff {
   id: string;
   name: string;
@@ -47,6 +58,7 @@ interface CalendarContainerProps {
   currentDate: Date;
   setCurrentDate: (date: Date) => void;
   bookings: Booking[];
+  blocks?: Block[];
   startHour?: number;
   endHour?: number;
   selectedStaff?: string;
@@ -60,6 +72,7 @@ interface CalendarContainerProps {
     newStaffId?: string,
   ) => void;
   onBookingClick?: (bookingId: string) => void;
+  onBlockClick?: (blockId: string) => void;
 }
 
 type ViewType = 'week' | 'day';
@@ -70,6 +83,7 @@ export function CalendarContainer({
   currentDate,
   setCurrentDate,
   bookings,
+  blocks = [],
   startHour = 7,
   endHour = 20,
   selectedStaff = 'all',
@@ -78,6 +92,7 @@ export function CalendarContainer({
   onTimeSlotClick,
   onBookingMove,
   onBookingClick,
+  onBlockClick,
 }: CalendarContainerProps) {
   const [visibleWeekDaysCount, setVisibleWeekDaysCount] = useState(7);
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -301,16 +316,7 @@ export function CalendarContainer({
           <WeekCalendar
             currentDate={currentDate}
             bookings={bookings}
-            startHour={startHour}
-            endHour={endHour}
-            onTimeSlotClick={onTimeSlotClick}
-            onBookingMove={onBookingMove}
-            onBookingClick={onBookingClick}
-          />
-        ) : (
-          <DayCalendar
-            currentDate={currentDate}
-            bookings={bookings}
+            blocks={blocks}
             startHour={startHour}
             endHour={endHour}
             selectedStaff={selectedStaff}
@@ -318,6 +324,21 @@ export function CalendarContainer({
             onTimeSlotClick={onTimeSlotClick}
             onBookingMove={onBookingMove}
             onBookingClick={onBookingClick}
+            onBlockClick={onBlockClick}
+          />
+        ) : (
+          <DayCalendar
+            currentDate={currentDate}
+            bookings={bookings}
+            blocks={blocks}
+            startHour={startHour}
+            endHour={endHour}
+            selectedStaff={selectedStaff}
+            staffMembers={staffMembers}
+            onTimeSlotClick={onTimeSlotClick}
+            onBookingMove={onBookingMove}
+            onBookingClick={onBookingClick}
+            onBlockClick={onBlockClick}
           />
         )}
       </div>

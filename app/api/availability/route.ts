@@ -7,6 +7,8 @@ import { parse, addMinutes, format } from 'date-fns'
 import { BUSINESS_HOURS } from '@/lib/constants'
 import { zonedTimeToUtc } from '@/lib/timezone'
 import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
+import { isFutureBookingStart } from '@/lib/booking-policy'
+import { blockBlocksSlot } from '@/lib/block-availability'
 
 const availabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -17,6 +19,7 @@ const availabilitySchema = z.object({
 
 async function calculateAvailability(input: z.infer<typeof availabilitySchema>) {
   const { locationId, offeringId, date, duration: customDuration } = input
+  const now = new Date()
 
   const client = getSupabaseAdmin()
 
@@ -112,12 +115,14 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
   if (bookError) throw bookError
 
   // Get blocks for the date
+  // Overlap, nicht Containment: ein mehrtägiger Block (z. B. Urlaub) startet vor
+  // und endet nach dem abgefragten Tag und muss trotzdem gefunden werden.
   const { data: blocks, error: blockError } = await client
     .from('blocks')
     .select('start_time, end_time')
     .eq('location_id', locationId)
-    .gte('start_time', startOfDay.toISOString())
-    .lte('end_time', endOfDay.toISOString()) as any
+    .lte('start_time', endOfDay.toISOString())
+    .gte('end_time', startOfDay.toISOString()) as any
 
   if (blockError) throw blockError
 
@@ -153,10 +158,7 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
       // Check for blocks
       if (!hasConflict && blocks) {
         for (const block of blocks) {
-          const blockStart = new Date(block.start_time)
-          const blockEnd = new Date(block.end_time)
-
-          if (slotStart < blockEnd && slotEnd > blockStart) {
+          if (blockBlocksSlot(block, slotStart, slotEnd)) {
             hasConflict = true
             break
           }
@@ -166,7 +168,7 @@ async function calculateAvailability(input: z.infer<typeof availabilitySchema>) 
       slots.push({
         startTime: slotStart.toISOString(),
         endTime: slotEnd.toISOString(),
-        available: !hasConflict,
+        available: !hasConflict && isFutureBookingStart(slotStart, now),
       })
 
       slotStart = addMinutes(slotStart, 30) // 30-minute intervals

@@ -5,9 +5,14 @@
  */
 
 export const DEFAULT_CANCELLATION_CUTOFF_HOURS = 24
+export const BOOKING_IN_PAST_ERROR = 'Termine können nur in der Zukunft gebucht werden.'
+
+/** Whether customers may move their appointment online. Default: allowed. */
+export const DEFAULT_ALLOW_RESCHEDULE = true
 
 type OrgSettings = {
   cancellationCutoffHours?: unknown
+  allowReschedule?: unknown
   showPrices?: unknown
   showDuration?: unknown
   requiredCustomerFields?: unknown
@@ -88,6 +93,16 @@ export function getCancellationCutoffHours(orgSettings: unknown): number {
     : DEFAULT_CANCELLATION_CUTOFF_HOURS
 }
 
+/**
+ * Whether customers may reschedule their booking online (default: true).
+ * Uses the same cutoff as cancellation: once the cancellation deadline has
+ * passed, rescheduling is closed too.
+ */
+export function getAllowReschedule(orgSettings: unknown): boolean {
+  const value = (orgSettings as OrgSettings)?.allowReschedule
+  return value === false ? false : DEFAULT_ALLOW_RESCHEDULE
+}
+
 /** Whether prices should be shown to customers on the booking page. Default: true. */
 export function getShowPrices(orgSettings: unknown): boolean {
   const value = (orgSettings as OrgSettings)?.showPrices
@@ -112,4 +127,36 @@ export function canCancelBooking(
   const start = new Date(startTime).getTime()
   const deadline = start - cutoffHours * 60 * 60 * 1000
   return now.getTime() <= deadline
+}
+
+/** Whether an appointment start is strictly in the future. */
+export function isFutureBookingStart(
+  startTime: string | Date,
+  now: Date = new Date()
+): boolean {
+  const start = typeof startTime === 'string' ? new Date(startTime) : startTime
+  const startMs = start.getTime()
+  return Number.isFinite(startMs) && startMs > now.getTime()
+}
+
+/** Mark past slots unavailable while preserving the slot payload shape. */
+export function withPastSlotsUnavailable<T extends { startTime: string; available: boolean }>(
+  slots: T[],
+  now: Date = new Date()
+): T[] {
+  return slots.map((slot) => ({
+    ...slot,
+    available: slot.available && isFutureBookingStart(slot.startTime, now),
+  }))
+}
+
+/** Compare only the local calendar day, ignoring the time-of-day. */
+export function isSameOrAfterLocalDay(date: Date, minDate: Date = new Date()): boolean {
+  return startOfLocalDay(date).getTime() >= startOfLocalDay(minDate).getTime()
+}
+
+function startOfLocalDay(date: Date): Date {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
 }

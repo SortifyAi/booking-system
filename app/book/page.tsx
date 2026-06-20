@@ -9,12 +9,25 @@ import { PublicBookingFooter, PublicBookingPrivacyNotice } from '@/components/Pu
 import { toast } from 'sonner'
 import { Calendar, Clock, User, Scissors, MapPin, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
+import {
+  BOOKING_IN_PAST_ERROR,
+  isFutureBookingStart,
+  isSameOrAfterLocalDay,
+  withPastSlotsUnavailable,
+} from '@/lib/booking-policy'
+import { DEFAULT_TIMEZONE, formatTimeInTimeZone } from '@/lib/timezone'
 import { format } from 'date-fns'
+import {
+  PublicBookingSubmissionError,
+  type BookingSubmissionError,
+} from '@/components/PublicBookingSubmissionError'
 
 interface Location {
   id: string
   name: string
   address: string
+  phone?: string | null
+  timezone?: string | null
 }
 
 interface Offering {
@@ -60,6 +73,7 @@ export default function BookPage() {
   const [fallbackSlot, setFallbackSlot] = useState<TimeSlot | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submissionError, setSubmissionError] = useState<BookingSubmissionError | null>(null)
   
   // Form data
   const [customerName, setCustomerName] = useState('')
@@ -67,6 +81,10 @@ export default function BookPage() {
   const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
   const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState(false)
+
+  useEffect(() => {
+    setSubmissionError(null)
+  }, [customerEmail, selectedLocation?.id])
 
   // Fetch locations on mount
   useEffect(() => {
@@ -258,7 +276,7 @@ export default function BookPage() {
             staffName: selectedStaff.name,
             staffImageUrl: selectedStaff.imageUrl ?? null,
           }))
-          setAvailableSlots(slots)
+          setAvailableSlots(withPastSlotsUnavailable(slots))
 
           if (data.fallbackNextAvailable) {
             setFallbackReason(data.reason || 'Bevorzugter Mitarbeiter ist nicht verfügbar')
@@ -282,9 +300,9 @@ export default function BookPage() {
         const data = await response.json()
 
         if (data.type === 'aggregated' && data.staffDetails) {
-          setAvailableSlots(combineStaffAvailabilitySlots(data.staffDetails))
+          setAvailableSlots(withPastSlotsUnavailable(combineStaffAvailabilitySlots(data.staffDetails)))
         } else if (data.slots) {
-          setAvailableSlots(data.slots)
+          setAvailableSlots(withPastSlotsUnavailable(data.slots))
         } else {
           setAvailableSlots([])
         }
@@ -303,6 +321,13 @@ export default function BookPage() {
     }
     if (!privacyNoticeAccepted) {
       toast.error('Bitte bestätigen Sie die Datenschutzinformationen')
+      return
+    }
+    if (!isFutureBookingStart(selectedSlot.startTime)) {
+      toast.error(BOOKING_IN_PAST_ERROR)
+      setSelectedSlot(null)
+      setStep(4)
+      fetchAvailability()
       return
     }
 
@@ -330,6 +355,18 @@ export default function BookPage() {
       })
       
       const result = await response.json()
+      if (result.code === 'EMAIL_INVALID') {
+        setSubmissionError({ kind: 'email', message: result.message })
+        return
+      }
+      if (result.code === 'CONTACT_SALON') {
+        setSubmissionError({
+          kind: 'contact',
+          message: result.message,
+          phone: result.phone || selectedLocation.phone,
+        })
+        return
+      }
       if (!response.ok) throw new Error(result.error || 'Booking failed')
 
       toast.success('Buchung erfolgreich! Wir bestätigen per E-Mail.')
@@ -347,12 +384,11 @@ export default function BookPage() {
   }
 
   function formatTime(isoString: string) {
-    return new Date(isoString).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    return formatTimeInTimeZone(isoString, selectedLocation?.timezone || DEFAULT_TIMEZONE)
   }
 
   // Week days for calendar
   const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-  const today = new Date()
   const selectedBookingStaff =
     selectedStaff ||
     staffMembers.find((staff) => staff.id === selectedSlot?.staffId) ||
@@ -566,7 +602,7 @@ export default function BookPage() {
                 onClick={() => {
                   const newDate = new Date(selectedDate)
                   newDate.setDate(newDate.getDate() - 1)
-                  if (newDate >= today) setSelectedDate(newDate)
+                  if (isSameOrAfterLocalDay(newDate)) setSelectedDate(newDate)
                 }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
               >
@@ -686,6 +722,7 @@ export default function BookPage() {
                   required
                 />
               </div>
+              <PublicBookingSubmissionError error={submissionError} />
               <div>
                 <label className="block text-sm font-medium mb-1 dark:text-gray-200">
                   Telefon (optional)

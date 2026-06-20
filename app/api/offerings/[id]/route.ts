@@ -14,6 +14,7 @@ const updateOfferingSchema = z.object({
   color: z.string().optional(),
   imageUrl: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
+  availableAsAddon: z.boolean().optional(),
 })
 
 function toOfferingUpdate(data: z.infer<typeof updateOfferingSchema>) {
@@ -26,6 +27,7 @@ function toOfferingUpdate(data: z.infer<typeof updateOfferingSchema>) {
   if (data.color !== undefined) updates.color = data.color
   if (data.imageUrl !== undefined) updates.image_url = normalizeResourceImageUrl(data.imageUrl)
   if (data.isActive !== undefined) updates.is_active = data.isActive
+  if (data.availableAsAddon !== undefined) updates.available_as_addon = data.availableAsAddon
   return updates
 }
 

@@ -17,6 +17,7 @@ interface LocationFormProps {
 export interface LocationFormData {
   name: string;
   address?: string;
+  phone?: string;
   timezone?: string;
   openingHours?: OpeningHours[];
   bundesland?: string;
@@ -71,6 +72,7 @@ export function LocationForm({
   const [formData, setFormData] = useState<LocationFormData>({
     name: initialData?.name || '',
     address: initialData?.address || '',
+    phone: initialData?.phone || '',
     timezone: initialData?.timezone || 'Europe/Berlin',
     openingHours: initialData?.openingHours || defaultOpeningHours,
     bundesland: initialData?.bundesland || '',
@@ -252,6 +254,24 @@ export function LocationForm({
           type="text"
           placeholder="z.B. Musterstraße 123, 12345 Stadt"
           value={formData.address}
+          onChange={handleChange}
+          className="mt-1"
+        />
+      </div>
+
+      <div>
+        <label
+          htmlFor="phone"
+          className="block text-sm font-medium text-gray-700 dark:text-slate-300"
+        >
+          Telefonnummer
+        </label>
+        <Input
+          id="phone"
+          name="phone"
+          type="tel"
+          placeholder="+49 40 123456"
+          value={formData.phone}
           onChange={handleChange}
           className="mt-1"
         />

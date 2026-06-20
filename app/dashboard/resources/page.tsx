@@ -20,6 +20,7 @@ import { getPrimaryLocationId, getPrimaryOrganizationId } from '@/lib/utils/supa
 import { ResourceForm } from '@/components/ResourceForm';
 import { ResourceAvatar } from '@/components/ResourceAvatar';
 import { ResourceImageUploadControl } from '@/components/ResourceImageUploadControl';
+import { CalendarShareLinks } from '@/components/CalendarShareLinks';
 
 interface Resource {
   id: string;
@@ -118,6 +119,7 @@ export default function ResourcesPage() {
     equipment: 'Ausrüstung',
     table: 'Tisch',
   };
+  const staffResources = resources.filter((resource) => resource.type === 'staff');
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -182,6 +184,8 @@ export default function ResourcesPage() {
           ))}
         </div>
       )}
+
+      {!loading && <CalendarShareLinks resources={staffResources} />}
 
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-sm">

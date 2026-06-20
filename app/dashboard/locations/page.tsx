@@ -25,6 +25,7 @@ interface Location {
   id: string;
   name: string;
   address: string | null;
+  phone: string | null;
   timezone: string;
   organization_id: string;
   settings?: { openingHours?: any[]; bundesland?: string; exceptions?: any[] };
@@ -79,6 +80,7 @@ export default function LocationsPage() {
           id: `mock-loc-${Date.now()}`,
           name: formData.name,
           address: formData.address || null,
+          phone: formData.phone?.trim() || null,
           timezone: formData.timezone || 'Europe/Berlin',
           organization_id: 'org-1',
         } as Location;
@@ -97,6 +99,7 @@ export default function LocationsPage() {
       const { error } = await supabase.from('locations').insert({
         name: formData.name,
         address: formData.address,
+        phone: formData.phone?.trim() || null,
         timezone: formData.timezone || 'UTC',
         organization_id: organizationId,
         settings: {
@@ -138,6 +141,7 @@ export default function LocationsPage() {
       const { error } = await supabase.from('locations').update({
         name: formData.name,
         address: formData.address,
+        phone: formData.phone?.trim() || null,
         timezone: formData.timezone,
         settings: {
           ...(editingLocation.settings ?? {}),
@@ -280,6 +284,7 @@ export default function LocationsPage() {
             initialData={editingLocation ? {
               name: editingLocation.name,
               address: editingLocation.address || '',
+              phone: editingLocation.phone || '',
               timezone: editingLocation.timezone,
               openingHours: editingLocation.settings?.openingHours,
               bundesland: editingLocation.settings?.bundesland,

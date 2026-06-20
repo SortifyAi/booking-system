@@ -8,6 +8,7 @@ import { z } from 'zod'
 const updateLocationSchema = z.object({
   name: z.string().min(1).optional(),
   address: z.string().optional(),
+  phone: z.string().trim().max(50).nullable().optional(),
   timezone: z.string().optional(),
   settings: z.record(z.unknown()).optional(),
 })

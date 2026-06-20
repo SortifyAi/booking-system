@@ -1,4 +1,48 @@
 /**
+ * Default IANA timezone for the app. Every location stores its own `timezone`,
+ * but where one isn't at hand we fall back to this (matches the location form
+ * default, the availability slot generation and the reminder window).
+ */
+export const DEFAULT_TIMEZONE = 'Europe/Berlin'
+
+/**
+ * Format the time-of-day (HH:mm) of a UTC instant in a fixed timezone.
+ *
+ * Booking times are stored as absolute instants (TIMESTAMPTZ). Rendering them
+ * with the runtime's timezone shows different clock times on a UTC server (e.g.
+ * emails) than in a CEST browser (e.g. the customer's manage page) — that is the
+ * source of the "12:00 here, 14:00 there" bug. Pinning to the location timezone
+ * makes the displayed wall-clock identical everywhere, regardless of where the
+ * code runs.
+ */
+export function formatTimeInTimeZone(
+  iso: string | Date,
+  timeZone: string = DEFAULT_TIMEZONE
+): string {
+  const date = typeof iso === 'string' ? new Date(iso) : iso
+  return new Intl.DateTimeFormat('de-DE', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+/** Format a full German date of a UTC instant in a fixed timezone. */
+export function formatDateInTimeZone(
+  iso: string | Date,
+  timeZone: string = DEFAULT_TIMEZONE,
+  options: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }
+): string {
+  const date = typeof iso === 'string' ? new Date(iso) : iso
+  return new Intl.DateTimeFormat('de-DE', { timeZone, ...options }).format(date)
+}
+
+/**
  * Convert a wall-clock time in a given IANA timezone to the absolute instant
  * (UTC) it represents.
  *

@@ -4,11 +4,17 @@
 import * as React from 'react';
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import {
+  DEFAULT_TIMEZONE,
+  zonedTimeToUtc,
+  formatTimeInTimeZone,
+  formatDateInTimeZone,
+} from '@/lib/timezone';
 import { toast } from 'sonner';
 import { CalendarContainer } from '@/components/CalendarContainer';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockBookings, mockLocations, mockOfferings, mockStaff } from '@/lib/mock-data';
-import { Calendar as CalendarIcon, Phone, Mail, Clock, User, Briefcase, Trash2, Edit2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Phone, Mail, Clock, User, Briefcase, Trash2, Edit2, Lock, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,14 +27,18 @@ import {
 import { Input } from '@/components/ui/input';
 import {
   CalendarBooking,
+  CalendarBlock,
   CalendarStaffMember,
   normalizeCalendarBooking,
+  normalizeCalendarBlock,
+  blockTypeLabels,
 } from '@/lib/calendar-admin';
 
 interface Location {
   id: string;
   name: string;
   organization_id?: string;
+  timezone?: string | null;
 }
 
 interface Offering {
@@ -51,16 +61,45 @@ const formatTimeInput = (date: Date) => {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 
+/**
+ * Turn a `YYYY-MM-DD` date + `HH:mm` time the operator typed into the absolute
+ * UTC instant it represents in the location's timezone. Using `new Date(...)`
+ * would interpret the wall-clock in the operator's *device* timezone, so a
+ * laptop set to UTC would store "12:00" as 12:00Z (= 14:00 in Berlin).
+ */
+const wallClockToUtcIso = (dateStr: string, timeStr: string, timeZone: string) => {
+  const [hour, minute] = timeStr.split(':').map(Number);
+  return zonedTimeToUtc(dateStr, hour || 0, minute || 0, timeZone).toISOString();
+};
+
 export default function CalendarPage() {
   const [viewMode, setViewMode] = React.useState<'week' | 'day'>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<CalendarBooking[]>([]);
+  const [blocks, setBlocks] = useState<CalendarBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<'booking' | 'block'>('booking');
   const [detailBookingId, setDetailBookingId] = useState<string | null>(null);
+  const [customerHistory, setCustomerHistory] = useState({
+    loading: false,
+    noShowCount: 0,
+    isBlocked: false,
+    canManageBlock: false,
+  });
+  const [detailBlockId, setDetailBlockId] = useState<string | null>(null);
   const [isEditingBooking, setIsEditingBooking] = useState(false);
+  const [newBlock, setNewBlock] = useState({
+    staff_id: '',
+    location_id: '',
+    date: '',
+    time: '',
+    duration_minutes: 60,
+    type: 'other',
+    reason: '',
+  });
   const [editBooking, setEditBooking] = useState({
     customer_name: '',
     customer_email: '',
@@ -119,10 +158,11 @@ export default function CalendarPage() {
           location_id,
         })));
         setBookings(mockBookings.map((booking) => normalizeCalendarBooking(booking, mockCalendarStaff)));
+        setBlocks([]);
         return;
       }
 
-      const [staffData, locationsData, offeringsData, bookingsData] = await Promise.all([
+      const [staffData, locationsData, offeringsData, bookingsData, blocksData] = await Promise.all([
         supabase
           .from('resources')
           .select('id, name, type')
@@ -131,7 +171,7 @@ export default function CalendarPage() {
           .order('name'),
         supabase
           .from('locations')
-          .select('id, name, organization_id')
+          .select('id, name, organization_id, timezone')
           .order('name'),
         supabase
           .from('offerings')
@@ -141,6 +181,11 @@ export default function CalendarPage() {
         supabase
           .from('bookings')
           .select('*, offerings(name), resources(id, name)')
+          .in('status', ['pending', 'confirmed'])
+          .order('start_time', { ascending: true }),
+        supabase
+          .from('blocks')
+          .select('*')
           .order('start_time', { ascending: true }),
       ]);
 
@@ -148,6 +193,7 @@ export default function CalendarPage() {
       if (locationsData.error) throw locationsData.error;
       if (offeringsData.error) throw offeringsData.error;
       if (bookingsData.error) throw bookingsData.error;
+      if (blocksData.error) throw blocksData.error;
 
       const calendarStaff = (staffData.data || []).map((resource, idx) => ({
         id: resource.id,
@@ -159,6 +205,7 @@ export default function CalendarPage() {
       setLocations(locationsData.data || []);
       setOfferings(offeringsData.data || []);
       setBookings((bookingsData.data || []).map((booking) => normalizeCalendarBooking(booking, calendarStaff)));
+      setBlocks((blocksData.data || []).map((block) => normalizeCalendarBlock(block, calendarStaff)));
     } catch (error) {
       console.error('Calendar load error:', error);
       toast.error('Kalenderdaten konnten nicht geladen werden');
@@ -174,6 +221,13 @@ export default function CalendarPage() {
   const filteredBookings = selectedStaff === 'all'
     ? bookings
     : bookings.filter((booking) => booking.staff_id === selectedStaff);
+
+  const filteredBlocks = selectedStaff === 'all'
+    ? blocks
+    : blocks.filter((block) => {
+        const blockStaffId = block.resource_id || block.staff_id;
+        return !blockStaffId || blockStaffId === selectedStaff;
+      });
 
   const handleQuickCreate = (date: Date, hour: number, staffId?: string) => {
     const selectedDate = new Date(date);
@@ -197,6 +251,7 @@ export default function CalendarPage() {
       || (selectedStaff !== 'all' ? selectedStaff : firstAvailableStaff?.id || staffMembers[0]?.id || '');
 
     setQuickCreateData({ date: selectedDate, hour, staffId: defaultStaffId });
+    setCreateMode('booking');
     setNewBooking({
       customer_name: '',
       customer_email: '',
@@ -210,6 +265,15 @@ export default function CalendarPage() {
       duration_minutes: defaultDuration,
       notes: '',
       status: 'confirmed',
+    });
+    setNewBlock({
+      staff_id: defaultStaffId,
+      location_id: defaultLocationId,
+      date: formatDateInput(selectedDate),
+      time: formatTimeInput(selectedDate),
+      duration_minutes: 60,
+      type: 'other',
+      reason: '',
     });
     setIsModalOpen(true);
   };
@@ -246,11 +310,12 @@ export default function CalendarPage() {
       return;
     }
 
-    const startTime = new Date(`${newBooking.date}T${newBooking.time}`);
-    const endTime = new Date(startTime.getTime() + newBooking.duration_minutes * 60000);
     const staff = staffMembers.find((member) => member.id === newBooking.staff_id);
     const offering = offerings.find((item) => item.id === newBooking.offering_id);
     const location = locations.find((item) => item.id === newBooking.location_id);
+    const tz = location?.timezone || DEFAULT_TIMEZONE;
+    const startTime = new Date(wallClockToUtcIso(newBooking.date, newBooking.time, tz));
+    const endTime = new Date(startTime.getTime() + newBooking.duration_minutes * 60000);
 
     setSubmitting(true);
     try {
@@ -312,6 +377,108 @@ export default function CalendarPage() {
       toast.error('Termin konnte nicht erstellt werden');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSaveQuickBlock = async () => {
+    if (!newBlock.staff_id) {
+      toast.error('Bitte Mitarbeiter auswählen');
+      return;
+    }
+
+    if (!newBlock.date || !newBlock.time) {
+      toast.error('Bitte Datum und Uhrzeit ausfüllen');
+      return;
+    }
+
+    const staff = staffMembers.find((member) => member.id === newBlock.staff_id);
+    const location = locations.find((item) => item.id === newBlock.location_id) || locations[0];
+    const tz = location?.timezone || DEFAULT_TIMEZONE;
+    const isFullDay = newBlock.duration_minutes >= 1440;
+    const startTime = isFullDay
+      ? new Date(wallClockToUtcIso(newBlock.date, '00:00', tz))
+      : new Date(wallClockToUtcIso(newBlock.date, newBlock.time, tz));
+    const endTime = isFullDay
+      ? new Date(wallClockToUtcIso(newBlock.date, '23:59', tz))
+      : new Date(startTime.getTime() + newBlock.duration_minutes * 60000);
+
+    setSubmitting(true);
+    try {
+      if (isMockMode()) {
+        const newBlockEntry: CalendarBlock = {
+          id: `block-${Date.now()}`,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          location_id: location?.id || null,
+          resource_id: newBlock.staff_id,
+          staff_id: newBlock.staff_id,
+          staff_name: staff?.name,
+          staff_color: staff?.color,
+          reason: newBlock.reason || null,
+          type: newBlock.type,
+        };
+
+        setBlocks((prev) => [...prev, newBlockEntry]);
+        toast.success('Blocker wurde erstellt');
+        setIsModalOpen(false);
+        setQuickCreateData(null);
+        return;
+      }
+
+      if (!location?.organization_id) {
+        toast.error('Organisation für den Standort fehlt');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('blocks')
+        .insert({
+          organization_id: location.organization_id,
+          location_id: location.id,
+          resource_id: newBlock.staff_id,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          reason: newBlock.reason || null,
+          type: newBlock.type,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setBlocks((prev) => [...prev, normalizeCalendarBlock(data, staffMembers)]);
+      toast.success('Blocker wurde erstellt');
+      setIsModalOpen(false);
+      setQuickCreateData(null);
+    } catch (error) {
+      console.error('Calendar block create error:', error);
+      toast.error('Blocker konnte nicht erstellt werden');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteBlock = async (blockId: string) => {
+    const existing = blocks.find((block) => block.id === blockId);
+    if (!existing) return;
+    if (!confirm('Diesen Blocker wirklich entfernen?')) return;
+
+    setBlocks((prev) => prev.filter((block) => block.id !== blockId));
+    setDetailBlockId(null);
+
+    if (isMockMode()) {
+      toast.success('Blocker entfernt');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('blocks').delete().eq('id', blockId);
+      if (error) throw error;
+      toast.success('Blocker entfernt');
+    } catch (error) {
+      console.error('Block delete error:', error);
+      setBlocks((prev) => [...prev, existing]);
+      toast.error('Blocker konnte nicht entfernt werden');
     }
   };
 
@@ -377,11 +544,7 @@ export default function CalendarPage() {
     if (!existing) return;
     if (!confirm('Diesen Termin wirklich absagen?')) return;
 
-    setBookings((prev) =>
-      prev.map((booking) =>
-        booking.id === bookingId ? { ...booking, status: 'cancelled' } : booking,
-      ),
-    );
+    setBookings((prev) => prev.filter((booking) => booking.id !== bookingId));
     setDetailBookingId(null);
 
     if (isMockMode()) {
@@ -398,12 +561,109 @@ export default function CalendarPage() {
       toast.success('Termin abgesagt');
     } catch (error) {
       console.error('Booking cancel error:', error);
-      setBookings((prev) => prev.map((booking) => (booking.id === bookingId ? existing : booking)));
+      setBookings((prev) => [...prev, existing].sort((a, b) => a.start_time.localeCompare(b.start_time)));
       toast.error('Termin konnte nicht abgesagt werden');
     }
   };
 
   const detailBooking = bookings.find((booking) => booking.id === detailBookingId) || null;
+  const detailBlock = blocks.find((block) => block.id === detailBlockId) || null;
+
+  useEffect(() => {
+    if (!detailBookingId) {
+      setCustomerHistory({ loading: false, noShowCount: 0, isBlocked: false, canManageBlock: false });
+      return;
+    }
+    if (isMockMode()) {
+      setCustomerHistory({ loading: false, noShowCount: 0, isBlocked: false, canManageBlock: false });
+      return;
+    }
+
+    let cancelled = false;
+    setCustomerHistory({ loading: true, noShowCount: 0, isBlocked: false, canManageBlock: false });
+    fetch(`/api/customer-email-history/${detailBookingId}`)
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Kundenhistorie konnte nicht geladen werden');
+        if (!cancelled) {
+          setCustomerHistory({
+            loading: false,
+            noShowCount: result.noShowCount || 0,
+            isBlocked: Boolean(result.isBlocked),
+            canManageBlock: Boolean(result.canManageBlock),
+          });
+        }
+      })
+      .catch((error) => {
+        console.error('Customer history load error:', error);
+        if (!cancelled) {
+          setCustomerHistory({ loading: false, noShowCount: 0, isBlocked: false, canManageBlock: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailBookingId]);
+
+  const handleMarkNoShow = async () => {
+    if (!detailBooking) return;
+    if (!confirm('Diesen Termin als „Nicht erschienen“ markieren?')) return;
+
+    setSubmitting(true);
+    try {
+      if (isMockMode()) {
+        setBookings((prev) => prev.map((booking) =>
+          booking.id === detailBooking.id ? { ...booking, status: 'no_show' } : booking
+        ));
+        setCustomerHistory((prev) => ({ ...prev, noShowCount: prev.noShowCount + 1 }));
+        toast.success('Termin als nicht erschienen markiert');
+        return;
+      }
+
+      const response = await fetch(`/api/bookings/${detailBooking.id}/no-show`, { method: 'POST' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Termin konnte nicht aktualisiert werden');
+
+      const changedIds = new Set<string>(result.changedIds || [detailBooking.id]);
+      setBookings((prev) => prev.map((booking) =>
+        changedIds.has(booking.id) ? { ...booking, status: 'no_show' } : booking
+      ));
+      setCustomerHistory((prev) => ({ ...prev, noShowCount: result.noShowCount || 1 }));
+      toast.success('Termin als nicht erschienen markiert');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Termin konnte nicht aktualisiert werden');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBlockCustomer = async () => {
+    if (!detailBooking?.organization_id || !detailBooking.customer_email) return;
+    if (!confirm(`${detailBooking.customer_email} salonweit für Online-Buchungen sperren?`)) return;
+
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/customer-email-blocks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: detailBooking.organization_id,
+          email: detailBooking.customer_email,
+          reason: `${customerHistory.noShowCount} Fehltermin(e)`,
+          sourceBookingId: detailBooking.id,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Kunde konnte nicht gesperrt werden');
+      setCustomerHistory((prev) => ({ ...prev, isBlocked: true }));
+      toast.success('Kunde wurde salonweit gesperrt');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Kunde konnte nicht gesperrt werden');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleStartEdit = () => {
     if (!detailBooking) return;
@@ -463,10 +723,12 @@ export default function CalendarPage() {
       return;
     }
 
-    const startTime = new Date(`${editBooking.date}T${editBooking.time}`);
-    const endTime = new Date(startTime.getTime() + editBooking.duration_minutes * 60000);
     const staff = staffMembers.find((member) => member.id === editBooking.staff_id);
     const offering = offerings.find((item) => item.id === editBooking.offering_id);
+    const editLocation = locations.find((item) => item.id === editBooking.location_id);
+    const editTz = editLocation?.timezone || DEFAULT_TIMEZONE;
+    const startTime = new Date(wallClockToUtcIso(editBooking.date, editBooking.time, editTz));
+    const endTime = new Date(startTime.getTime() + editBooking.duration_minutes * 60000);
     const existing = detailBooking;
 
     setSubmitting(true);
@@ -544,6 +806,7 @@ export default function CalendarPage() {
         currentDate={currentDate}
         setCurrentDate={setCurrentDate}
         bookings={filteredBookings}
+        blocks={filteredBlocks}
         startHour={7}
         endHour={20}
         selectedStaff={selectedStaff}
@@ -552,6 +815,7 @@ export default function CalendarPage() {
         onTimeSlotClick={handleQuickCreate}
         onBookingMove={handleBookingMove}
         onBookingClick={(id) => setDetailBookingId(id)}
+        onBlockClick={(id) => setDetailBlockId(id)}
       />
 
       {/* Booking detail modal (shows customer contact incl. phone) */}
@@ -570,12 +834,7 @@ export default function CalendarPage() {
             {!isEditingBooking && (
               <DialogDescription>
                 {detailBooking &&
-                  new Date(detailBooking.start_time).toLocaleDateString('de-DE', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+                  formatDateInTimeZone(detailBooking.start_time)}
               </DialogDescription>
             )}
           </DialogHeader>
@@ -584,9 +843,9 @@ export default function CalendarPage() {
             <div className="space-y-3 py-2 text-sm">
               <div className="flex items-center gap-2 text-gray-700 dark:text-slate-300">
                 <Clock className="h-4 w-4 flex-shrink-0 text-gray-400" />
-                {new Date(detailBooking.start_time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                {formatTimeInTimeZone(detailBooking.start_time)}
                 {' – '}
-                {new Date(detailBooking.end_time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr
+                {formatTimeInTimeZone(detailBooking.end_time)} Uhr
               </div>
 
               {detailBooking.service && (
@@ -633,6 +892,22 @@ export default function CalendarPage() {
               {detailBooking.notes && (
                 <div className="rounded-md bg-gray-50 p-3 text-gray-600 dark:bg-slate-800/60 dark:text-slate-400">
                   {detailBooking.notes}
+                </div>
+              )}
+
+              {customerHistory.loading ? (
+                <div className="rounded-md bg-gray-50 p-3 text-gray-500 dark:bg-slate-800/60 dark:text-slate-400">
+                  Kundenhistorie wird geladen…
+                </div>
+              ) : customerHistory.noShowCount > 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  Bereits {customerHistory.noShowCount}-mal nicht erschienen.
+                </div>
+              ) : null}
+
+              {customerHistory.isBlocked && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                  Diese E-Mail-Adresse ist salonweit gesperrt.
                 </div>
               )}
             </div>
@@ -791,6 +1066,8 @@ export default function CalendarPage() {
                   <option value="confirmed">Bestätigt</option>
                   <option value="pending">Ausstehend</option>
                   <option value="cancelled">Storniert</option>
+                  <option value="completed">Abgeschlossen</option>
+                  <option value="no_show">Nicht erschienen</option>
                 </select>
               </div>
 
@@ -811,6 +1088,31 @@ export default function CalendarPage() {
           <DialogFooter className="gap-2 sm:gap-0">
             {!isEditingBooking ? (
               <>
+                {detailBooking && !['cancelled', 'completed', 'no_show'].includes(detailBooking.status) && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 text-amber-700 hover:text-amber-800 dark:text-amber-300 sm:w-auto"
+                    onClick={handleMarkNoShow}
+                    disabled={submitting}
+                  >
+                    <UserX className="h-4 w-4" />
+                    Nicht erschienen
+                  </Button>
+                )}
+                {detailBooking?.customer_email &&
+                  customerHistory.noShowCount >= 1 &&
+                  customerHistory.canManageBlock &&
+                  !customerHistory.isBlocked && (
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2 text-red-600 hover:text-red-700 dark:text-red-400 sm:w-auto"
+                      onClick={handleBlockCustomer}
+                      disabled={submitting}
+                    >
+                      <Lock className="h-4 w-4" />
+                      Kunde sperren
+                    </Button>
+                  )}
                 {detailBooking && detailBooking.status !== 'cancelled' && (
                   <Button
                     variant="outline"
@@ -850,11 +1152,11 @@ export default function CalendarPage() {
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-h-[92vh] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>Neue Buchung</DialogTitle>
+            <DialogTitle>{createMode === 'block' ? 'Neuer Blocker' : 'Neue Buchung'}</DialogTitle>
             <DialogDescription>
               {quickCreateData && (
                 <>
-                  Termin am {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:00 Uhr
+                  {createMode === 'block' ? 'Zeit blockieren am' : 'Termin am'} {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:00 Uhr
                   {quickCreateData.staffId && (
                     <> bei {staffMembers.find((staff) => staff.id === quickCreateData.staffId)?.name}</>
                   )}
@@ -863,6 +1165,128 @@ export default function CalendarPage() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Mode toggle: Termin vs. Blocker */}
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-slate-800">
+            <button
+              type="button"
+              onClick={() => setCreateMode('booking')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                createMode === 'booking'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100'
+              }`}
+            >
+              Termin
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateMode('block')}
+              className={`flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                createMode === 'block'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100'
+              }`}
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Blocker
+            </button>
+          </div>
+
+          {createMode === 'block' && (
+            <div className="space-y-4 py-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Mitarbeiter *
+                </label>
+                <select
+                  value={newBlock.staff_id}
+                  onChange={(e) => setNewBlock((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="" disabled>Mitarbeiter wählen...</option>
+                  {staffMembers.map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                    Datum *
+                  </label>
+                  <Input
+                    type="date"
+                    value={newBlock.date}
+                    onChange={(e) => setNewBlock((prev) => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                    Von *
+                  </label>
+                  <Input
+                    type="time"
+                    value={newBlock.time}
+                    onChange={(e) => setNewBlock((prev) => ({ ...prev, time: e.target.value }))}
+                    disabled={newBlock.duration_minutes >= 1440}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                    Dauer
+                  </label>
+                  <select
+                    value={newBlock.duration_minutes}
+                    onChange={(e) => setNewBlock((prev) => ({ ...prev, duration_minutes: Number(e.target.value) }))}
+                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value={30}>30 Min.</option>
+                    <option value={60}>1 Std.</option>
+                    <option value={90}>1,5 Std.</option>
+                    <option value={120}>2 Std.</option>
+                    <option value={180}>3 Std.</option>
+                    <option value={240}>4 Std.</option>
+                    <option value={360}>6 Std.</option>
+                    <option value={480}>8 Std.</option>
+                    <option value={1440}>Ganzer Tag</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                    Typ
+                  </label>
+                  <select
+                    value={newBlock.type}
+                    onChange={(e) => setNewBlock((prev) => ({ ...prev, type: e.target.value }))}
+                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <option value="other">Blocker</option>
+                    <option value="break">Pause</option>
+                    <option value="vacation">Urlaub</option>
+                    <option value="sick">Krankheit</option>
+                    <option value="maintenance">Wartung</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                  Grund / Notiz
+                </label>
+                <Input
+                  placeholder="z.B. Mittagspause, Arzttermin (optional)"
+                  value={newBlock.reason}
+                  onChange={(e) => setNewBlock((prev) => ({ ...prev, reason: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+
+          {createMode === 'booking' && (
           <div className="space-y-4 py-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
@@ -1014,13 +1438,80 @@ export default function CalendarPage() {
               />
             </div>
           </div>
+          )}
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsModalOpen(false)}>
               Abbrechen
             </Button>
-            <Button className="w-full sm:w-auto" onClick={handleSaveQuickBooking} disabled={submitting || staffMembers.length === 0}>
-              {submitting ? 'Speichert...' : 'Termin speichern'}
+            {createMode === 'block' ? (
+              <Button className="w-full gap-2 sm:w-auto" onClick={handleSaveQuickBlock} disabled={submitting || staffMembers.length === 0}>
+                <Lock className="h-4 w-4" />
+                {submitting ? 'Speichert...' : 'Blocker speichern'}
+              </Button>
+            ) : (
+              <Button className="w-full sm:w-auto" onClick={handleSaveQuickBooking} disabled={submitting || staffMembers.length === 0}>
+                {submitting ? 'Speichert...' : 'Termin speichern'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Block detail modal */}
+      <Dialog
+        open={!!detailBlock}
+        onOpenChange={(open) => {
+          if (!open) setDetailBlockId(null);
+        }}
+      >
+        <DialogContent className="max-h-[92vh] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-4 w-4" />
+              {detailBlock ? (blockTypeLabels[detailBlock.type] || 'Blocker') : 'Blocker'}
+            </DialogTitle>
+            <DialogDescription>
+              {detailBlock &&
+                formatDateInTimeZone(detailBlock.start_time)}
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailBlock && (
+            <div className="space-y-3 py-2 text-sm">
+              <div className="flex items-center gap-2 text-gray-700 dark:text-slate-300">
+                <Clock className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                {formatTimeInTimeZone(detailBlock.start_time)}
+                {' – '}
+                {formatTimeInTimeZone(detailBlock.end_time)} Uhr
+              </div>
+
+              {detailBlock.staff_name && (
+                <div className="flex items-center gap-2 text-gray-700 dark:text-slate-300">
+                  <User className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                  {detailBlock.staff_name}
+                </div>
+              )}
+
+              {detailBlock.reason && (
+                <div className="rounded-md bg-gray-50 p-3 text-gray-600 dark:bg-slate-800/60 dark:text-slate-400">
+                  {detailBlock.reason}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              className="w-full gap-2 text-red-600 hover:text-red-700 dark:text-red-400 sm:w-auto"
+              onClick={() => detailBlock && handleDeleteBlock(detailBlock.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Entfernen
+            </Button>
+            <Button className="w-full sm:w-auto" onClick={() => setDetailBlockId(null)}>
+              Schließen
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -87,6 +87,7 @@ export interface Database {
           id: string
           name: string
           organization_id: string
+          phone: string | null
           settings: Json
           timezone: string
           updated_at: string
@@ -97,6 +98,7 @@ export interface Database {
           id?: string
           name: string
           organization_id: string
+          phone?: string | null
           settings?: Json
           timezone?: string
           updated_at?: string
@@ -107,6 +109,7 @@ export interface Database {
           id?: string
           name?: string
           organization_id?: string
+          phone?: string | null
           settings?: Json
           timezone?: string
           updated_at?: string
@@ -350,6 +353,57 @@ export interface Database {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "resources"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      customer_email_blocks: {
+        Row: {
+          blocked_at: string
+          blocked_by: string | null
+          id: string
+          normalized_email: string
+          organization_id: string
+          reason: string | null
+          source_booking_id: string | null
+          unblocked_at: string | null
+          unblocked_by: string | null
+        }
+        Insert: {
+          blocked_at?: string
+          blocked_by?: string | null
+          id?: string
+          normalized_email: string
+          organization_id: string
+          reason?: string | null
+          source_booking_id?: string | null
+          unblocked_at?: string | null
+          unblocked_by?: string | null
+        }
+        Update: {
+          blocked_at?: string
+          blocked_by?: string | null
+          id?: string
+          normalized_email?: string
+          organization_id?: string
+          reason?: string | null
+          source_booking_id?: string | null
+          unblocked_at?: string | null
+          unblocked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_email_blocks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_email_blocks_source_booking_id_fkey"
+            columns: ["source_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
             referencedColumns: ["id"]
           }
         ]

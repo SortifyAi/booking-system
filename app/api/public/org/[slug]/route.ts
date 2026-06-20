@@ -38,7 +38,7 @@ export async function GET(
 
   const { data: locations } = await supabase
     .from('locations')
-    .select('id, name, address, timezone')
+    .select('id, name, address, phone, timezone')
     .eq('organization_id', org.id)
 
   return NextResponse.json({ org, locations: locations ?? [] })

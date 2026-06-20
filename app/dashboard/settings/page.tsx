@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockUser } from '@/lib/mock-data';
-import { getCancellationCutoffHours, getShowPrices, getShowDuration, getRequiredCustomerFields, getPrivacyPolicyUrl, getAvvAcceptance, CURRENT_AVV_VERSION, type RequiredCustomerFields, type AvvAcceptance } from '@/lib/booking-policy';
+import { getCancellationCutoffHours, getAllowReschedule, getShowPrices, getShowDuration, getRequiredCustomerFields, getPrivacyPolicyUrl, getAvvAcceptance, CURRENT_AVV_VERSION, type RequiredCustomerFields, type AvvAcceptance } from '@/lib/booking-policy';
 import Link from 'next/link';
 
 interface UserSettings {
@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [orgLoading, setOrgLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [cutoffHours, setCutoffHours] = useState<number>(24);
+  const [allowReschedule, setAllowReschedule] = useState(true);
   const [showPrices, setShowPrices] = useState(true);
   const [showDuration, setShowDuration] = useState(true);
   const [requiredFields, setRequiredFields] = useState<RequiredCustomerFields>({ phone: false, notes: false });
@@ -57,6 +58,7 @@ export default function SettingsPage() {
         const org = data.organizations as Organization;
         setOrganization(org);
         setCutoffHours(getCancellationCutoffHours(org.settings));
+        setAllowReschedule(getAllowReschedule(org.settings));
         setShowPrices(getShowPrices(org.settings));
         setShowDuration(getShowDuration(org.settings));
         setRequiredFields(getRequiredCustomerFields(org.settings));
@@ -181,6 +183,17 @@ export default function SettingsPage() {
       toast.error(error?.message || 'Speichern fehlgeschlagen');
     } finally {
       setAcceptingAvv(false);
+    }
+  };
+
+  const toggleReschedule = async (value: boolean) => {
+    if (!organization) return;
+    setAllowReschedule(value);
+    try {
+      await saveOrgSettings({ allowReschedule: value });
+    } catch (error: any) {
+      setAllowReschedule(!value);
+      toast.error(error?.message || 'Speichern fehlgeschlagen');
     }
   };
 
@@ -493,6 +506,28 @@ export default function SettingsPage() {
               Bis zu dieser Frist können Kunden ihren Termin selbst online stornieren.
               Danach erscheint der Hinweis, den Salon direkt zu kontaktieren. 0 = jederzeit möglich.
             </p>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between border-t border-gray-100 dark:border-slate-800 pt-4">
+            <div className="pr-4">
+              <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Termine verschieben erlauben</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Kunden können ihren Termin selbst auf eine andere freie Zeit verlegen
+                (innerhalb derselben Frist wie die Stornierung).
+              </p>
+            </div>
+            <button
+              onClick={() => toggleReschedule(!allowReschedule)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                allowReschedule ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  allowReschedule ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
         </div>
       )}

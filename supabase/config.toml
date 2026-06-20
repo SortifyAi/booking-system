@@ -1,6 +1,8 @@
 # Supabase Local Configuration
 # This config is only used for local development with supabase start
 
+project_id = "bookanord"
+
 [api]
 enabled = true
 port = 54321
@@ -27,7 +29,7 @@ pop3_port = 54326
 
 [storage]
 enabled = true
-file_size_limit = 52428800
+file_size_limit = "50MiB"
 
 [auth]
 enabled = true

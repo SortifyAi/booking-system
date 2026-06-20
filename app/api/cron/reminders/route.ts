@@ -1,8 +1,8 @@
 // @ts-nocheck
 /**
- * Cron job to send booking reminders (runs hourly, see vercel.json).
- * Sends a reminder for every confirmed booking starting within the next 24h
- * that hasn't been reminded yet.
+ * Cron job to send booking reminders (runs daily, see vercel.json).
+ * Sends a reminder for every confirmed booking on the location's local
+ * calendar day that hasn't been reminded yet.
  *
  * Auth: Vercel Cron automatically sends `Authorization: Bearer <CRON_SECRET>`
  * when the CRON_SECRET env var is set. We also accept a legacy `x-cron-secret`
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const bookings = await getBookingsNeedingReminder(24) // next 24 hours
+    const bookings = await getBookingsNeedingReminder()
 
     let sent = 0
     let failed = 0
@@ -46,10 +46,12 @@ export async function GET(request: NextRequest) {
           offeringName: booking.offerings?.name || 'Service',
           locationName: booking.locations?.name || 'Standort',
           locationAddress: booking.locations?.address || '',
+          timeZone: booking.locations?.timezone,
           startTime: booking.start_time,
           endTime: booking.end_time,
           organizationName: booking.organizations?.name || 'Terminbuchung',
           manageUrl: booking.manage_token ? buildManageUrl(booking.manage_token) : undefined,
+          manageToken: booking.manage_token || undefined,
           organizationId: booking.organization_id,
           bookingId: booking.id,
         })

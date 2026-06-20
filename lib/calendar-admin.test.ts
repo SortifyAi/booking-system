@@ -4,7 +4,7 @@ import {
   getBookingStaffId,
   getStaffLabel,
   normalizeCalendarBooking,
-} from './calendar-admin'
+} from './calendar-admin.ts'
 
 const staffMembers = [
   { id: 'res-anna', name: 'Anna Weber', color: '#8B5CF6' },
@@ -14,6 +14,8 @@ const staffMembers = [
 const bookingFromDatabase = normalizeCalendarBooking(
   {
     id: 'booking-1',
+    organization_id: 'org-1',
+    group_id: 'group-1',
     customer_name: 'Lena Hoffmann',
     start_time: '2026-05-25T09:00:00.000Z',
     end_time: '2026-05-25T10:00:00.000Z',
@@ -30,6 +32,8 @@ assert.equal(bookingFromDatabase.guest_name, 'Lena Hoffmann')
 assert.equal(bookingFromDatabase.service, 'Haarschnitt')
 assert.equal(bookingFromDatabase.staff_id, 'res-anna')
 assert.equal(bookingFromDatabase.staff_name, 'Anna Weber')
+assert.equal(bookingFromDatabase.organization_id, 'org-1')
+assert.equal(bookingFromDatabase.group_id, 'group-1')
 
 const legacyBooking = normalizeCalendarBooking(
   {

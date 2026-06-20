@@ -3,7 +3,7 @@ import {
   getBookingTimeStyle,
   getMaximumParallelBookings,
   layoutOverlappingBookings,
-} from './calendar-layout';
+} from './calendar-layout.ts';
 
 const sameMorning = [
   {

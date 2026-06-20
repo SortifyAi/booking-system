@@ -5,6 +5,9 @@ import { getUser } from '@/lib/supabase/server'
 import { CreateBookingRequest, Booking } from '@/types/models'
 import { z } from 'zod'
 import { sendBookingConfirmation } from '@/lib/email'
+import { normalizeEmail } from '@/lib/email-domain'
+import { publicBookingEmailError } from '@/lib/customer-email'
+import { guardPublicBookingEmail } from '@/lib/public-booking-email-guard'
 
 const createBookingSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -12,7 +15,7 @@ const createBookingSchema = z.object({
   offeringId: z.string().uuid(),
   resourceId: z.string().uuid().optional(), // Optional: auto-assign if not provided
   customerName: z.string().min(1),
-  customerEmail: z.string().email(),
+  customerEmail: z.string().trim().email(),
   customerPhone: z.string().optional(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
@@ -106,6 +109,9 @@ export async function POST(request: NextRequest) {
     // Validate request
     const validationResult = createBookingSchema.safeParse(body)
     if (!validationResult.success) {
+      if (validationResult.error.issues.some((issue) => issue.path[0] === 'customerEmail')) {
+        return NextResponse.json(publicBookingEmailError('invalid'), { status: 400 })
+      }
       return NextResponse.json(
         { error: 'Validierung fehlgeschlagen', details: validationResult.error.issues },
         { status: 400 }
@@ -134,6 +140,35 @@ export async function POST(request: NextRequest) {
         { error: 'Bitte bestätigen Sie die Datenschutzinformationen', code: 'PRIVACY_NOTICE_REQUIRED' },
         { status: 400 }
       )
+    }
+
+    const { data: bookingLocation, error: locationError } = await client
+      .from('locations')
+      .select('organization_id, name, address, phone')
+      .eq('id', locationId)
+      .single() as any
+
+    if (locationError || !bookingLocation) {
+      return NextResponse.json(
+        { error: 'Standort nicht gefunden' },
+        { status: 404 }
+      )
+    }
+
+    const finalOrganizationId = user && organizationId
+      ? organizationId
+      : bookingLocation.organization_id
+    const normalizedCustomerEmail = normalizeEmail(customerEmail)
+
+    if (!user) {
+      const emailGuard = await guardPublicBookingEmail({
+        email: normalizedCustomerEmail,
+        organizationId: finalOrganizationId,
+        locationPhone: bookingLocation.phone,
+      })
+      if (!emailGuard.ok) {
+        return NextResponse.json(emailGuard.body, { status: emailGuard.status })
+      }
     }
 
     // Auto-assign staff if not selected: find staff with fewest bookings at this time
@@ -169,25 +204,6 @@ export async function POST(request: NextRequest) {
 
         finalResourceId = bestStaff
       }
-    }
-
-    let finalOrganizationId = organizationId
-    if (!finalOrganizationId) {
-      // For public bookings, get org from location
-      const { data: location, error: locError } = await client
-        .from('locations')
-        .select('organization_id')
-        .eq('id', locationId)
-        .single() as any
-
-      if (locError || !location) {
-        return NextResponse.json(
-          { error: 'Standort nicht gefunden' },
-          { status: 404 }
-        )
-      }
-
-      finalOrganizationId = location.organization_id
     }
 
     // Verify user has access if authenticated
@@ -235,7 +251,6 @@ export async function POST(request: NextRequest) {
       if (conflictError) throw conflictError
     }
 
-    if (conflictError) throw conflictError
     if (conflictingBookings?.length) {
       return NextResponse.json(
         { error: 'Time slot not available' },
@@ -252,12 +267,12 @@ export async function POST(request: NextRequest) {
         offering_id: offeringId,
         resource_id: finalResourceId || null,
         customer_name: customerName,
-        customer_email: customerEmail,
+        customer_email: normalizedCustomerEmail,
         customer_phone: customerPhone || null,
         start_time: startTime,
         end_time: endTime,
         notes: notes || null,
-        status: 'confirmed',
+        status: 'pending',
         metadata: {
           privacyNoticeAccepted: !user ? true : undefined,
           privacyNoticeAcceptedAt: !user ? new Date().toISOString() : undefined,
@@ -268,43 +283,53 @@ export async function POST(request: NextRequest) {
 
     if (createError) throw createError
 
-    // Send confirmation email (async, don't wait)
-    try {
-      // Get additional details for email
-      const { data: offering } = await client
-        .from('offerings')
-        .select('name')
-        .eq('id', offeringId)
-        .single() as any
+    const { data: offering } = await client
+      .from('offerings')
+      .select('name')
+      .eq('id', offeringId)
+      .single() as any
 
-      const { data: location } = await client
-        .from('locations')
-        .select('name, address')
-        .eq('id', locationId)
-        .single() as any
+    const { data: organization } = await client
+      .from('organizations')
+      .select('name')
+      .eq('id', finalOrganizationId)
+      .single() as any
 
-      const { data: organization } = await client
-        .from('organizations')
-        .select('name')
-        .eq('id', finalOrganizationId)
-        .single() as any
+    const delivery = await sendBookingConfirmation({
+      customerName,
+      customerEmail: normalizedCustomerEmail,
+      offeringName: offering?.name || 'Service',
+      locationName: bookingLocation.name || 'Standort',
+      locationAddress: bookingLocation.address || '',
+      timeZone: bookingLocation.timezone,
+      startTime,
+      endTime,
+      organizationName: organization?.name || 'Terminbuchung',
+      organizationId: finalOrganizationId,
+      bookingId: booking.id,
+    })
 
-      await sendBookingConfirmation({
-        customerName,
-        customerEmail,
-        offeringName: offering?.name || 'Service',
-        locationName: location?.name || 'Standort',
-        locationAddress: location?.address || '',
-        startTime,
-        endTime,
-        organizationName: organization?.name || 'Terminbuchung',
-      })
-    } catch (emailError) {
-      console.error('Failed to send confirmation email:', emailError)
-      // Don't fail the booking if email fails
+    if (!delivery.success) {
+      return NextResponse.json(
+        publicBookingEmailError('contact', bookingLocation.phone),
+        { status: 503 }
+      )
     }
 
-    return NextResponse.json(booking, { status: 201 })
+    const { error: confirmError } = await client
+      .from('bookings')
+      .update({ status: 'confirmed' })
+      .eq('id', booking.id)
+
+    if (confirmError) {
+      console.error('Failed to confirm booking after email delivery:', confirmError)
+      return NextResponse.json(
+        publicBookingEmailError('contact', bookingLocation.phone),
+        { status: 503 }
+      )
+    }
+
+    return NextResponse.json({ ...booking, status: 'confirmed' }, { status: 201 })
   } catch (error) {
     console.error('Error creating booking:', error)
     return NextResponse.json(

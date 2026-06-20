@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
-    const { organization_id, name, address, timezone } = body;
+    const { organization_id, name, address, phone, timezone } = body;
 
     if (!organization_id || !name) {
       return NextResponse.json(
@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         organization_id,
         name,
         address,
+        phone: typeof phone === 'string' ? phone.trim() || null : null,
         timezone: timezone || "Europe/Berlin",
       } as Database["public"]["Tables"]["locations"]["Insert"])
       .select();

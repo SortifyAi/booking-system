@@ -1,6 +1,10 @@
 // @ts-nocheck
 import { Resend } from 'resend'
 import { createServiceClient } from '@/lib/supabase/server'
+import { getReminderDayWindow } from '@/lib/reminders'
+import { buildGoogleCalendarUrl, buildOutlookCalendarUrl } from '@/lib/calendar-links'
+import { buildIcsUrl } from '@/lib/booking-token'
+import { DEFAULT_TIMEZONE, formatDateInTimeZone, formatTimeInTimeZone } from '@/lib/timezone'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const resend = new Resend(RESEND_API_KEY || 're_placeholder')
@@ -54,16 +58,52 @@ interface BookingEmailData {
   customerName: string
   customerEmail: string
   offeringName: string
+  // Zusatzleistungen einer Einzelbuchung (Namen), z.B. ["Augenbrauen zupfen"].
+  addonNames?: string[]
+  // Positionen einer Sammelbuchung für mehrere Personen. Hat Vorrang vor
+  // offeringName/addonNames, wenn mehr als eine Position vorhanden ist.
+  items?: { serviceName: string; staffName?: string | null; addons?: string[] }[]
   locationName: string
   locationAddress: string
   startTime: string
   endTime: string
+  // IANA timezone of the location. Emails render on a UTC server, so the
+  // wall-clock time must be derived in the location's timezone, not the host's.
+  timeZone?: string
   notes?: string
   organizationName: string
   manageUrl?: string
+  // Secret token of the booking. Enables the "Apple Kalender" (.ics) button.
+  manageToken?: string
   // For delivery tracking in notification_log:
   organizationId?: string
   bookingId?: string
+}
+
+interface CalendarLinks {
+  google: string
+  outlook: string
+  ics?: string
+}
+
+/**
+ * Build the "add to calendar" links for a booking. Google/Outlook are derived
+ * purely from the event data; the .ics download needs the booking's token.
+ */
+function buildCalendarLinks(data: BookingEmailData): CalendarLinks {
+  const event = {
+    uid: `booking-${data.bookingId ?? data.manageToken ?? data.startTime}@bookanord`,
+    title: `${data.offeringName} – ${data.organizationName}`,
+    description: `Ihr Termin bei ${data.organizationName}.`,
+    location: [data.locationName, data.locationAddress].filter(Boolean).join(', '),
+    start: data.startTime,
+    end: data.endTime,
+  }
+  return {
+    google: buildGoogleCalendarUrl(event),
+    outlook: buildOutlookCalendarUrl(event),
+    ics: data.manageToken ? buildIcsUrl(data.manageToken) : undefined,
+  }
 }
 
 type NotificationType = 'confirmation' | 'reminder' | 'cancellation' | 'update'
@@ -100,8 +140,8 @@ async function logNotification(params: {
   }
 }
 
-function formatDateDE(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-DE', {
+function formatDateDE(iso: string, timeZone: string = DEFAULT_TIMEZONE): string {
+  return formatDateInTimeZone(iso, timeZone, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -109,11 +149,8 @@ function formatDateDE(iso: string): string {
   })
 }
 
-function formatTimeDE(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function formatTimeDE(iso: string, timeZone: string = DEFAULT_TIMEZONE): string {
+  return formatTimeInTimeZone(iso, timeZone)
 }
 
 /**
@@ -205,9 +242,10 @@ function buildPlainText(opts: {
   intro: string
   data: BookingEmailData
   manageUrl?: string
+  calendarLinks?: CalendarLinks
   closing?: string
 }): string {
-  const { heading, intro, data, manageUrl, closing } = opts
+  const { heading, intro, data, manageUrl, calendarLinks, closing } = opts
   const lines = [
     heading,
     '',
@@ -215,11 +253,16 @@ function buildPlainText(opts: {
     '',
     intro,
     '',
-    `Service: ${data.offeringName}`,
-    `Datum: ${formatDateDE(data.startTime)}`,
-    `Uhrzeit: ${formatTimeDE(data.startTime)} Uhr`,
+    ...serviceSummaryTextLines(data),
+    `Datum: ${formatDateDE(data.startTime, data.timeZone)}`,
+    `Uhrzeit: ${formatTimeDE(data.startTime, data.timeZone)} Uhr`,
     `Ort: ${data.locationName}${data.locationAddress ? `, ${data.locationAddress}` : ''}`,
   ]
+  if (calendarLinks) {
+    lines.push('', 'Zum Kalender hinzufügen:', `Google: ${calendarLinks.google}`)
+    if (calendarLinks.ics) lines.push(`Apple Kalender: ${calendarLinks.ics}`)
+    lines.push(`Outlook: ${calendarLinks.outlook}`)
+  }
   if (manageUrl) {
     lines.push(
       '',
@@ -229,6 +272,58 @@ function buildPlainText(opts: {
   }
   lines.push('', closing || 'Wir freuen uns auf Sie!', '', data.organizationName, 'Diese E-Mail wurde automatisch generiert.')
   return lines.join('\n')
+}
+
+const calButton = (href: string, label: string) =>
+  `<a href="${href}" style="display:inline-block; background:#fff; border:1px solid #d1d5db; color:#111827; padding:9px 14px; border-radius:6px; text-decoration:none; margin:0 6px 8px 0; font-size:14px;">📅 ${label}</a>`
+
+/**
+ * "Zum Kalender hinzufügen" buttons. Google/Outlook are always shown; the
+ * Apple/desktop .ics button only when a token-based download URL is available.
+ */
+const addToCalendarBlock = (links: CalendarLinks) => `
+  <p style="margin: 24px 0 8px;"><strong>Zum Kalender hinzufügen:</strong></p>
+  <p style="margin: 0;">
+    ${calButton(links.google, 'Google Kalender')}
+    ${links.ics ? calButton(links.ics, 'Apple Kalender') : ''}
+    ${calButton(links.outlook, 'Outlook')}
+  </p>
+`
+
+/**
+ * Renders the booked service(s) for an email body. Handles three cases:
+ * a single service, a single service with add-ons, and a multi-person group.
+ */
+function serviceSummaryHtml(data: BookingEmailData): string {
+  if (data.items && data.items.length > 1) {
+    const rows = data.items
+      .map((item, idx) => {
+        const addons = item.addons?.length
+          ? `<br><small style="color:#555;">+ ${item.addons.join(', ')}</small>`
+          : ''
+        const staff = item.staffName ? ` <small style="color:#555;">(${item.staffName})</small>` : ''
+        return `<p style="margin:0 0 6px;"><strong>Person ${idx + 1}:</strong> ${item.serviceName}${staff}${addons}</p>`
+      })
+      .join('')
+    return rows
+  }
+  const addonLine = data.addonNames?.length
+    ? `<p><strong>Zusatzleistungen:</strong> ${data.addonNames.join(', ')}</p>`
+    : ''
+  return `<p><strong>Service:</strong> ${data.offeringName}</p>${addonLine}`
+}
+
+function serviceSummaryTextLines(data: BookingEmailData): string[] {
+  if (data.items && data.items.length > 1) {
+    return data.items.map((item, idx) => {
+      const addons = item.addons?.length ? ` (+ ${item.addons.join(', ')})` : ''
+      const staff = item.staffName ? ` – ${item.staffName}` : ''
+      return `Person ${idx + 1}: ${item.serviceName}${staff}${addons}`
+    })
+  }
+  const lines = [`Service: ${data.offeringName}`]
+  if (data.addonNames?.length) lines.push(`Zusatzleistungen: ${data.addonNames.join(', ')}`)
+  return lines
 }
 
 const manageBlock = (manageUrl?: string) =>
@@ -247,8 +342,9 @@ const manageBlock = (manageUrl?: string) =>
  * Send booking confirmation email to customer
  */
 export async function sendBookingConfirmation(data: BookingEmailData) {
-  const formattedDate = formatDateDE(data.startTime)
-  const formattedTime = formatTimeDE(data.startTime)
+  const formattedDate = formatDateDE(data.startTime, data.timeZone)
+  const formattedTime = formatTimeDE(data.startTime, data.timeZone)
+  const calendarLinks = buildCalendarLinks(data)
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -257,12 +353,13 @@ export async function sendBookingConfirmation(data: BookingEmailData) {
       <p>Ihre Buchung wurde bestätigt:</p>
 
       <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <p><strong>Service:</strong> ${data.offeringName}</p>
+        ${serviceSummaryHtml(data)}
         <p><strong>Datum:</strong> ${formattedDate}</p>
         <p><strong>Uhrzeit:</strong> ${formattedTime}</p>
         <p><strong>Ort:</strong> ${data.locationName}<br><small>${data.locationAddress}</small></p>
       </div>
 
+      ${addToCalendarBlock(calendarLinks)}
       ${manageBlock(data.manageUrl)}
       ${emailFooter(data.organizationName)}
     </div>
@@ -273,6 +370,7 @@ export async function sendBookingConfirmation(data: BookingEmailData) {
     intro: 'Ihre Buchung wurde bestätigt:',
     data,
     manageUrl: data.manageUrl,
+    calendarLinks,
   })
 
   return sendAndLog(
@@ -285,11 +383,55 @@ export async function sendBookingConfirmation(data: BookingEmailData) {
 }
 
 /**
+ * Notify the customer that their appointment has been moved to a new time.
+ */
+export async function sendBookingUpdate(data: BookingEmailData) {
+  const formattedDate = formatDateDE(data.startTime, data.timeZone)
+  const formattedTime = formatTimeDE(data.startTime, data.timeZone)
+  const calendarLinks = buildCalendarLinks(data)
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h1 style="color: #333;">Termin verschoben</h1>
+      <p>Hallo ${data.customerName},</p>
+      <p>Ihr Termin wurde erfolgreich verschoben. Hier sind die neuen Details:</p>
+
+      <div style="background: #eff6ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Service:</strong> ${data.offeringName}</p>
+        <p><strong>Datum:</strong> ${formattedDate}</p>
+        <p><strong>Uhrzeit:</strong> ${formattedTime}</p>
+        <p><strong>Ort:</strong> ${data.locationName}<br><small>${data.locationAddress}</small></p>
+      </div>
+
+      ${addToCalendarBlock(calendarLinks)}
+      ${manageBlock(data.manageUrl)}
+      ${emailFooter(data.organizationName)}
+    </div>
+  `
+
+  const text = buildPlainText({
+    heading: 'Termin verschoben',
+    intro: 'Ihr Termin wurde erfolgreich verschoben. Hier sind die neuen Details:',
+    data,
+    manageUrl: data.manageUrl,
+    calendarLinks,
+  })
+
+  return sendAndLog(
+    data,
+    'update',
+    `Termin verschoben: Ihr neuer Termin am ${formattedDate}`,
+    html,
+    text
+  )
+}
+
+/**
  * Send booking cancellation confirmation to customer
  */
 export async function sendBookingCancellation(data: BookingEmailData) {
-  const formattedDate = formatDateDE(data.startTime)
-  const formattedTime = formatTimeDE(data.startTime)
+  const formattedDate = formatDateDE(data.startTime, data.timeZone)
+  const formattedTime = formatTimeDE(data.startTime, data.timeZone)
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -332,8 +474,9 @@ export async function sendBookingCancellation(data: BookingEmailData) {
  * Send booking reminder email to customer
  */
 export async function sendBookingReminder(data: BookingEmailData) {
-  const formattedDate = formatDateDE(data.startTime)
-  const formattedTime = formatTimeDE(data.startTime)
+  const formattedDate = formatDateDE(data.startTime, data.timeZone)
+  const formattedTime = formatTimeDE(data.startTime, data.timeZone)
+  const calendarLinks = buildCalendarLinks(data)
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -348,6 +491,7 @@ export async function sendBookingReminder(data: BookingEmailData) {
         <p><strong>Ort:</strong> ${data.locationName}<br><small>${data.locationAddress}</small></p>
       </div>
 
+      ${addToCalendarBlock(calendarLinks)}
       ${manageBlock(data.manageUrl)}
       ${emailFooter(data.organizationName)}
     </div>
@@ -358,6 +502,7 @@ export async function sendBookingReminder(data: BookingEmailData) {
     intro: 'wir möchten Sie an Ihren bevorstehenden Termin erinnern:',
     data,
     manageUrl: data.manageUrl,
+    calendarLinks,
   })
 
   return sendAndLog(
@@ -370,29 +515,54 @@ export async function sendBookingReminder(data: BookingEmailData) {
 }
 
 /**
- * Get bookings that need a reminder within the next `hoursBefore` hours.
- * Called by the reminder cron job. Uses the service client (no user session).
+ * Get bookings that need a reminder during today's local business day.
+ * Called by the daily reminder cron job. Uses the service client (no user session).
  */
-export async function getBookingsNeedingReminder(hoursBefore = 24) {
+export async function getBookingsNeedingReminder(now = new Date()) {
   const client = createServiceClient()
 
-  const now = new Date()
-  const reminderWindow = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000)
+  const { data: locations, error: locationError } = await client
+    .from('locations')
+    .select('id, timezone')
 
-  const { data: bookings, error } = await client
-    .from('bookings')
-    .select('*, offerings(*), locations(*), organizations(*)')
-    .eq('status', 'confirmed')
-    .gte('start_time', now.toISOString())
-    .lte('start_time', reminderWindow.toISOString())
-    .is('reminder_sent', null)
-
-  if (error) {
-    console.error('Error fetching bookings for reminder:', error)
+  if (locationError) {
+    console.error('Error fetching locations for reminder:', locationError)
     return []
   }
 
-  return bookings || []
+  const batches = await Promise.all(
+    (locations || []).map(async (location) => {
+      const window = getReminderDayWindow(now, location.timezone)
+      const { data: bookings, error } = await client
+        .from('bookings')
+        .select('*, offerings(*), locations(*), organizations(*)')
+        .eq('location_id', location.id)
+        .eq('status', 'confirmed')
+        .gte('start_time', window.startIso)
+        .lt('start_time', window.endIso)
+        .is('reminder_sent', null)
+        .order('start_time', { ascending: true })
+
+      if (error) {
+        console.error(
+          `Error fetching bookings for reminder at location ${location.id}:`,
+          error
+        )
+        return []
+      }
+
+      return bookings || []
+    })
+  )
+
+  const uniqueBookings = new Map<string, any>()
+  for (const booking of batches.flat()) {
+    uniqueBookings.set(booking.id, booking)
+  }
+
+  return Array.from(uniqueBookings.values()).sort(
+    (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  )
 }
 
 /**

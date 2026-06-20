@@ -8,6 +8,8 @@ import { BUSINESS_HOURS } from '@/lib/constants'
 import { zonedTimeToUtc } from '@/lib/timezone'
 import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
 import { buildDemoAvailability, isDemoLocationId, isDemoOfferingId } from '@/lib/public-demo'
+import { isFutureBookingStart, withPastSlotsUnavailable } from '@/lib/booking-policy'
+import { blockBlocksSlot } from '@/lib/block-availability'
 
 const enhancedAvailabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -94,15 +96,36 @@ export async function GET(request: NextRequest) {
       mode,
       duration: customDuration,
     } = validationResult.data
+    const now = new Date()
 
     if (isDemoLocationId(locationId) && isDemoOfferingId(offeringId)) {
-      return NextResponse.json(buildDemoAvailability({
+      const demoAvailability = buildDemoAvailability({
         date,
         offeringId,
         preferredStaffId: preferredStaffId || staffId,
         aggregated,
         mode,
-      }))
+      })
+
+      if (demoAvailability.type === 'smart') {
+        demoAvailability.preferredStaffAvailableSlots = withPastSlotsUnavailable(
+          demoAvailability.preferredStaffAvailableSlots || [],
+          now
+        )
+        if (
+          demoAvailability.fallbackNextAvailable &&
+          !isFutureBookingStart(demoAvailability.fallbackNextAvailable.startTime, now)
+        ) {
+          demoAvailability.fallbackNextAvailable = null
+        }
+      } else if (demoAvailability.type === 'aggregated') {
+        demoAvailability.staffDetails = (demoAvailability.staffDetails || []).map((staff: any) => ({
+          ...staff,
+          slots: withPastSlotsUnavailable(staff.slots || [], now),
+        }))
+      }
+
+      return NextResponse.json(demoAvailability)
     }
 
     const client = getSupabaseAdmin()
@@ -258,12 +281,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Get blocks for the date
+    // Get blocks overlapping the date. Overlap, nicht Containment: ein mehrtägiger
+    // Block (z. B. Urlaub) startet vor und endet nach dem abgefragten Tag und muss
+    // trotzdem gefunden werden.
     const { data: blocks, error: blockError } = await client
       .from('blocks')
       .select('start_time, end_time, resource_id')
-      .gte('start_time', startOfDay.toISOString())
-      .lte('end_time', endOfDay.toISOString()) as any
+      .lte('start_time', endOfDay.toISOString())
+      .gte('end_time', startOfDay.toISOString()) as any
 
     if (blockError) throw blockError
 
@@ -329,14 +354,9 @@ export async function GET(request: NextRequest) {
           // Check for blocks
           if (!hasConflict && blocks) {
             for (const block of blocks) {
-              if (!block.resource_id || block.resource_id === staffMemberId) {
-                const blockStart = new Date(block.start_time)
-                const blockEnd = new Date(block.end_time)
-
-                if (slotStart < blockEnd && slotEnd > blockStart) {
-                  hasConflict = true
-                  break
-                }
+              if (blockBlocksSlot(block, slotStart, slotEnd, staffMemberId)) {
+                hasConflict = true
+                break
               }
             }
           }
@@ -344,7 +364,7 @@ export async function GET(request: NextRequest) {
           slots.push({
             startTime: slotStart.toISOString(),
             endTime: slotEnd.toISOString(),
-            available: !hasConflict,
+            available: !hasConflict && isFutureBookingStart(slotStart, now),
           })
 
           slotStart = addMinutes(slotStart, 30) // 30-minute intervals

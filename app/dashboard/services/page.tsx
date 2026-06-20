@@ -29,6 +29,7 @@ interface Service {
   organizationId?: string;
   image_url?: string | null;
   imageUrl?: string | null;
+  available_as_addon?: boolean;
 }
 
 export default function ServicesPage() {
@@ -50,6 +51,7 @@ export default function ServicesPage() {
       organizationId: offering.organizationId,
       image_url: offering.image_url ?? offering.imageUrl ?? null,
       imageUrl: offering.imageUrl ?? offering.image_url ?? null,
+      available_as_addon: offering.available_as_addon ?? offering.availableAsAddon ?? false,
     };
   };
 
@@ -66,6 +68,7 @@ export default function ServicesPage() {
           price: offering.price_cents ? offering.price_cents / 100 : undefined,
           organization_id: offering.organization_id,
           image_url: offering.image_url ?? null,
+          available_as_addon: offering.available_as_addon ?? false,
         }));
         setServices(mapped);
         return;
@@ -85,6 +88,7 @@ export default function ServicesPage() {
         price: offering.price_cents ? offering.price_cents / 100 : undefined,
         organization_id: offering.organization_id,
         image_url: offering.image_url ?? null,
+        available_as_addon: offering.available_as_addon ?? false,
       }));
       setServices(mapped);
     } catch (error) {
@@ -109,6 +113,29 @@ export default function ServicesPage() {
     setServices((prev) =>
       prev.map((service) => (service.id === updated.id ? { ...service, ...updated } : service))
     );
+  };
+
+  const handleToggleAddon = async (id: string, value: boolean) => {
+    // Optimistic: flip locally, revert on failure.
+    setServices((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, available_as_addon: value } : s))
+    );
+
+    if (isMockMode()) return;
+
+    try {
+      const response = await fetch(`/api/offerings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ availableAsAddon: value }),
+      });
+      if (!response.ok) throw new Error('failed');
+    } catch {
+      setServices((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, available_as_addon: !value } : s))
+      );
+      toast.error('Änderung konnte nicht gespeichert werden');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -184,7 +211,14 @@ export default function ServicesPage() {
                     />
                   )}
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-gray-900 truncate dark:text-slate-100">{service.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-gray-900 truncate dark:text-slate-100">{service.name}</h3>
+                      {service.available_as_addon && (
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                          Zusatzleistung
+                        </span>
+                      )}
+                    </div>
                     {service.description && (
                       <p className="mt-1 text-sm text-gray-600 line-clamp-2 dark:text-slate-400">{service.description}</p>
                     )}
@@ -202,6 +236,15 @@ export default function ServicesPage() {
                   ✕
                 </button>
               </div>
+              <label className="mt-3 flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={!!service.available_as_addon}
+                  onChange={(event) => handleToggleAddon(service.id, event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Als Zusatzleistung anbieten
+              </label>
               <OfferingImageUploadControl offering={service} onUpdated={handleUpdated} />
             </div>
           ))}

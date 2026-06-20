@@ -43,6 +43,7 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
     description: '',
     durationMinutes: 60,
     price: '',
+    availableAsAddon: false,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -90,6 +91,7 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
       durationMinutes: formData.durationMinutes,
       capacity: 1,
       priceCents: priceNumber !== null ? Math.round(priceNumber * 100) : undefined,
+      availableAsAddon: formData.availableAsAddon,
     };
 
     const schema = isMockMode()
@@ -137,7 +139,7 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
       }
 
       toast.success('Leistung erfolgreich erstellt');
-      setFormData({ name: '', description: '', durationMinutes: 60, price: '' });
+      setFormData({ name: '', description: '', durationMinutes: 60, price: '', availableAsAddon: false });
       setImageFile(null);
       onCreated?.(created);
       onCancel?.();
@@ -276,6 +278,22 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
           </p>
         )}
       </div>
+
+      <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+        <input
+          type="checkbox"
+          checked={formData.availableAsAddon}
+          onChange={(event) => setFormData({ ...formData, availableAsAddon: event.target.checked })}
+          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <span className="text-sm">
+          <span className="font-medium text-gray-900 dark:text-slate-100">Als Zusatzleistung anbieten</span>
+          <span className="mt-0.5 block text-xs text-gray-500 dark:text-slate-400">
+            Kann beim Buchen zusätzlich zu einer anderen Leistung ausgewählt werden (z.B. Augenbrauen, Nasenhaare).
+            Die Leistung bleibt weiterhin auch einzeln buchbar.
+          </span>
+        </span>
+      </label>
 
       <div className="flex gap-2">
         <Button type="submit" disabled={isPending || uploadingImage} className="flex-1">

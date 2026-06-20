@@ -31,11 +31,13 @@ export async function GET(request: NextRequest) {
     // Mock data for development
     if (isMock) {
       const mockOfferings = [
-        { id: '1', name: 'Haarschnitt', description: 'Waschen, Schneiden, Föhnen', duration_minutes: 45, price_cents: 3500, color: '#3B82F6', image_url: null, location_id: 'loc-berlin', is_active: true },
-        { id: '2', name: 'Farbe', description: 'Haare färben mit professionellen Produkten', duration_minutes: 120, price_cents: 8000, color: '#8B5CF6', image_url: null, location_id: 'loc-berlin', is_active: true },
-        { id: '3', name: 'Strähnen', description: 'Strähnen und Highlights', duration_minutes: 150, price_cents: 12000, color: '#EC4899', image_url: null, location_id: 'loc-berlin', is_active: true },
-        { id: '4', name: 'Bartrasur', description: 'Klassische Rasur mit heißen Towels', duration_minutes: 30, price_cents: 2000, color: '#10B981', image_url: null, location_id: 'loc-hamburg', is_active: true },
-        { id: '5', name: 'Massage', description: 'Kopfmassage während der Wäsche', duration_minutes: 15, price_cents: 1000, color: '#F59E0B', image_url: null, location_id: 'loc-munich', is_active: true },
+        { id: '1', name: 'Haarschnitt', description: 'Waschen, Schneiden, Föhnen', duration_minutes: 45, price_cents: 3500, color: '#3B82F6', image_url: null, location_id: 'loc-berlin', is_active: true, available_as_addon: false },
+        { id: '2', name: 'Farbe', description: 'Haare färben mit professionellen Produkten', duration_minutes: 120, price_cents: 8000, color: '#8B5CF6', image_url: null, location_id: 'loc-berlin', is_active: true, available_as_addon: false },
+        { id: '3', name: 'Strähnen', description: 'Strähnen und Highlights', duration_minutes: 150, price_cents: 12000, color: '#EC4899', image_url: null, location_id: 'loc-berlin', is_active: true, available_as_addon: false },
+        { id: '6', name: 'Augenbrauen zupfen', description: 'Augenbrauen in Form bringen', duration_minutes: 15, price_cents: 1000, color: '#F472B6', image_url: null, location_id: 'loc-berlin', is_active: true, available_as_addon: true },
+        { id: '7', name: 'Bartrasur', description: 'Klassische Rasur mit heißem Tuch', duration_minutes: 30, price_cents: 2000, color: '#10B981', image_url: null, location_id: 'loc-berlin', is_active: true, available_as_addon: true },
+        { id: '4', name: 'Bartrasur', description: 'Klassische Rasur mit heißen Towels', duration_minutes: 30, price_cents: 2000, color: '#10B981', image_url: null, location_id: 'loc-hamburg', is_active: true, available_as_addon: false },
+        { id: '5', name: 'Massage', description: 'Kopfmassage während der Wäsche', duration_minutes: 15, price_cents: 1000, color: '#F59E0B', image_url: null, location_id: 'loc-munich', is_active: true, available_as_addon: true },
       ]
       const filtered = locationId ? mockOfferings.filter(o => o.location_id === locationId) : mockOfferings
       return NextResponse.json({ offerings: filtered })
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
         image_url,
         location_id,
         is_active,
+        available_as_addon,
         locations:name,organization_id
       `)
       .eq('is_active', true)

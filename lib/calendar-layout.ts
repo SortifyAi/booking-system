@@ -111,6 +111,41 @@ export function layoutOverlappingBookings(
   return positions;
 }
 
+/**
+ * Position style for a block (vacation/break/etc.) on a single day column.
+ * The block is clamped to the visible [startHour, endHour] window of that day,
+ * so multi-day or out-of-hours blocks render as a band covering the visible part.
+ * Returns null when the block does not intersect the visible window at all.
+ */
+export function getBlockStyleForDay(
+  block: { start_time: string; end_time: string },
+  day: Date,
+  startHour: number,
+  endHour: number,
+  slotHeight: number,
+): CalendarTimeStyle | null {
+  const windowStart = new Date(day);
+  windowStart.setHours(startHour, 0, 0, 0);
+  const windowEnd = new Date(day);
+  windowEnd.setHours(endHour, 0, 0, 0);
+
+  const blockStart = new Date(block.start_time);
+  const blockEnd = new Date(block.end_time);
+
+  const visibleStart = blockStart > windowStart ? blockStart : windowStart;
+  const visibleEnd = blockEnd < windowEnd ? blockEnd : windowEnd;
+
+  if (visibleEnd.getTime() <= visibleStart.getTime()) return null;
+
+  const startOffsetMinutes = (visibleStart.getTime() - windowStart.getTime()) / 60000;
+  const durationMinutes = (visibleEnd.getTime() - visibleStart.getTime()) / 60000;
+
+  return {
+    top: (startOffsetMinutes / 60) * slotHeight,
+    height: Math.max(8, (durationMinutes / 60) * slotHeight),
+  };
+}
+
 export function getBookingTimeStyle(
   booking: CalendarLayoutBooking,
   startHour: number,

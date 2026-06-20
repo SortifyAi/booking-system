@@ -1,0 +1,23 @@
+-- One-time cleanup of legacy TEST bookings with naive wall-clock-as-UTC times.
+--
+-- Background:
+-- Older code stored some booking start/end times as the wall-clock time written
+-- straight into the TIMESTAMPTZ column, e.g. "12:00 Uhr (Europe/Berlin)" saved as
+-- 12:00Z instead of the correct instant 10:00Z. Server-rendered surfaces (emails,
+-- which run in UTC) showed those as 12:00 — "looked right" — but the customer-facing
+-- manage page renders in the real local timezone (CEST), so the same value showed
+-- as 14:00. That is the "+2 Stunden in der Stornier-Übersicht" bug.
+--
+-- The booking/availability code now stores proper UTC instants and every display
+-- surface is pinned to the location's timezone (see lib/timezone.ts), so all NEW
+-- bookings are correct. The existing rows, however, are a mix of correct and naive
+-- instants that cannot be told apart by value alone.
+--
+-- These are confirmed TEST bookings (no real customer appointments), so we start
+-- from a clean slate instead of guessing per row. Re-create test bookings after
+-- deploying the fixed code and they will be stored and displayed correctly.
+--
+-- NOTE: notification_log.booking_id and customer_email_blocks.source_booking_id are
+-- ON DELETE SET NULL, so this delete is not blocked by foreign keys.
+
+DELETE FROM bookings;

@@ -11,9 +11,10 @@ import {
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
-import { getBookingDisplayParts } from '@/lib/calendar-admin';
+import { Plus, Lock } from 'lucide-react';
+import { getBookingDisplayParts, blockTypeLabels } from '@/lib/calendar-admin';
 import {
+  getBlockStyleForDay,
   getBookingTimeStyle,
   getMaximumParallelBookings,
   layoutOverlappingBookings,
@@ -33,6 +34,17 @@ interface Booking {
   staff_color?: string;
 }
 
+interface Block {
+  id: string;
+  start_time: string;
+  end_time: string;
+  resource_id?: string | null;
+  staff_id?: string | null;
+  staff_name?: string;
+  reason?: string | null;
+  type: string;
+}
+
 interface Staff {
   id: string;
   name: string;
@@ -42,6 +54,7 @@ interface Staff {
 interface DayCalendarProps {
   currentDate: Date;
   bookings: Booking[];
+  blocks?: Block[];
   startHour?: number;
   endHour?: number;
   selectedStaff?: string;
@@ -54,6 +67,7 @@ interface DayCalendarProps {
     newStaffId?: string,
   ) => void;
   onBookingClick?: (bookingId: string) => void;
+  onBlockClick?: (blockId: string) => void;
 }
 
 const staffColors: Record<string, string> = {
@@ -67,6 +81,7 @@ const slotHeight = 76;
 export function DayCalendar({
   currentDate,
   bookings,
+  blocks = [],
   startHour = 7,
   endHour = 20,
   selectedStaff = 'all',
@@ -74,6 +89,7 @@ export function DayCalendar({
   onTimeSlotClick,
   onBookingMove,
   onBookingClick,
+  onBlockClick,
 }: DayCalendarProps) {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
   const bodyHeight = (endHour - startHour) * slotHeight;
@@ -132,6 +148,22 @@ export function DayCalendar({
   const getStaffBookings = (staffId: string) => {
     if (!staffId) return dayBookings;
     return dayBookings.filter((booking) => booking.staff_id === staffId || booking.resource_id === staffId);
+  };
+
+  const dayBlocks = blocks.filter((block) => {
+    const dayStart = new Date(currentDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(currentDate);
+    dayEnd.setHours(23, 59, 59, 999);
+    return new Date(block.start_time) <= dayEnd && new Date(block.end_time) >= dayStart;
+  });
+
+  const getStaffBlocks = (staffId: string) => {
+    if (!staffId) return dayBlocks;
+    return dayBlocks.filter((block) => {
+      const blockStaffId = block.resource_id || block.staff_id;
+      return !blockStaffId || blockStaffId === staffId;
+    });
   };
 
   const staffColumnWidths = staffColumns.map((staff) => {
@@ -293,6 +325,36 @@ export function DayCalendar({
                       title="Klicken um Termin zu erstellen"
                     />
                   ))}
+
+                  {/* Blocks (gray striped bands behind bookings) */}
+                  {getStaffBlocks(staff.id).map((block) => {
+                    const style = getBlockStyleForDay(block, currentDate, startHour, endHour, slotHeight);
+                    if (!style) return null;
+                    const label = block.reason || blockTypeLabels[block.type] || 'Blockiert';
+
+                    return (
+                      <button
+                        key={block.id}
+                        type="button"
+                        onClick={() => onBlockClick?.(block.id)}
+                        className="absolute inset-x-1 z-[5] overflow-hidden rounded-md border border-slate-300 px-2 py-1 text-left text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500"
+                        style={{
+                          top: `${style.top}px`,
+                          height: `${style.height}px`,
+                          backgroundColor: 'rgba(100,116,139,0.12)',
+                          backgroundImage:
+                            'repeating-linear-gradient(45deg, rgba(100,116,139,0.18) 0, rgba(100,116,139,0.18) 6px, transparent 6px, transparent 12px)',
+                          cursor: 'pointer',
+                        }}
+                        title={`Blockiert${block.reason ? ` · ${block.reason}` : ''}`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Lock className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
 
                   {/* Drop preview while dragging onto this staff column */}
                   {isDropTarget && dragState?.target && (

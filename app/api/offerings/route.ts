@@ -17,6 +17,7 @@ const createOfferingSchema = z.object({
   priceCents: z.number().int().nonnegative().optional(),
   color: z.string().optional(),
   imageUrl: z.string().nullable().optional(),
+  availableAsAddon: z.boolean().optional(),
 })
 
 /**
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { organizationId, locationId, name, description, durationMinutes, capacity, priceCents, color, imageUrl } =
+    const { organizationId, locationId, name, description, durationMinutes, capacity, priceCents, color, imageUrl, availableAsAddon } =
       validationResult.data
     let normalizedImageUrl: string | null = null
     try {
@@ -144,6 +145,7 @@ export async function POST(request: NextRequest) {
       capacity,
       price_cents: priceCents || null,
       color,
+      available_as_addon: availableAsAddon ?? false,
     }
     if (normalizedImageUrl) {
       insertPayload.image_url = normalizedImageUrl

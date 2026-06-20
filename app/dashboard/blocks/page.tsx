@@ -127,6 +127,17 @@ export default function BlocksPage() {
       return;
     }
 
+    if (newBlock.endDate < newBlock.startDate) {
+      toast.error('Das Enddatum darf nicht vor dem Startdatum liegen');
+      return;
+    }
+
+    // "Von"/"Bis" sind reine Datumsfelder: Start auf Tagesbeginn, Ende auf
+    // Tagesende (inklusive), damit ein Eintagesurlaub den ganzen Tag abdeckt und
+    // nicht als Null-Dauer-Block ohne Wirkung/Anzeige endet.
+    const startTime = new Date(`${newBlock.startDate}T00:00:00`).toISOString();
+    const endTime = new Date(`${newBlock.endDate}T23:59:59.999`).toISOString();
+
     try {
       setSaving(true);
 
@@ -141,8 +152,8 @@ export default function BlocksPage() {
         const newBlockEntry: Block = {
           id: `block-${Date.now()}`,
           resource_id: newBlock.resourceId,
-          start_time: new Date(newBlock.startDate).toISOString(),
-          end_time: new Date(newBlock.endDate).toISOString(),
+          start_time: startTime,
+          end_time: endTime,
           reason: newBlock.reason || null,
           type: newBlock.type,
           resource_name: resources.find(r => r.id === newBlock.resourceId)?.name || 'Unbekannt',
@@ -167,8 +178,8 @@ export default function BlocksPage() {
         body: JSON.stringify({
           locationId: resourceData?.location_id,
           resourceId: newBlock.resourceId,
-          startTime: new Date(newBlock.startDate).toISOString(),
-          endTime: new Date(newBlock.endDate).toISOString(),
+          startTime,
+          endTime,
           type: newBlock.type,
           reason: newBlock.reason || null,
         }),

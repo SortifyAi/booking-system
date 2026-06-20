@@ -23,9 +23,9 @@ export async function POST(
   const { data: booking, error } = await supabase
     .from('bookings')
     .select(`
-      id, status, start_time, end_time, customer_name, customer_email,
+      id, status, start_time, end_time, customer_name, customer_email, group_id,
       offerings(name),
-      locations(name, address),
+      locations(name, address, timezone),
       organizations(name, settings)
     `)
     .eq('manage_token', token)
@@ -52,10 +52,11 @@ export async function POST(
     )
   }
 
-  const { error: updateError } = await supabase
-    .from('bookings')
-    .update({ status: 'cancelled' })
-    .eq('manage_token', token)
+  // Sammelbuchung: alle Geschwister über group_id stornieren, sonst die einzelne Zeile.
+  const cancelQuery = supabase.from('bookings').update({ status: 'cancelled' })
+  const { error: updateError } = await (booking.group_id
+    ? cancelQuery.eq('group_id', booking.group_id)
+    : cancelQuery.eq('manage_token', token))
 
   if (updateError) {
     return NextResponse.json({ error: 'Stornierung fehlgeschlagen' }, { status: 500 })
@@ -70,6 +71,7 @@ export async function POST(
         offeringName: booking.offerings?.name || 'Service',
         locationName: booking.locations?.name || 'Standort',
         locationAddress: booking.locations?.address || '',
+        timeZone: booking.locations?.timezone,
         startTime: booking.start_time,
         endTime: booking.end_time,
         organizationName: booking.organizations?.name || 'Terminbuchung',
