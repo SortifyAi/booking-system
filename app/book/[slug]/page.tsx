@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { ResourceAvatar } from '@/components/ResourceAvatar'
 import { PublicBookingFooter, PublicBookingPrivacyNotice } from '@/components/PublicBookingLegal'
 import { toast } from 'sonner'
-import { Calendar, Clock, User, MapPin, ChevronLeft, ChevronRight, Check, AlertCircle, ShoppingCart, Plus, Trash2 } from 'lucide-react'
+import { Calendar, Clock, User, MapPin, ChevronLeft, ChevronRight, ChevronUp, Check, AlertCircle, ShoppingCart, Plus, Trash2 } from 'lucide-react'
 import { combineStaffAvailabilitySlots } from '@/lib/public-booking'
 import {
   BOOKING_IN_PAST_ERROR,
@@ -105,6 +105,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [manageUrl, setManageUrl] = useState<string | null>(null)
   const [demoSubmission, setDemoSubmission] = useState(false)
   const [submissionError, setSubmissionError] = useState<BookingSubmissionError | null>(null)
+  const [cartExpanded, setCartExpanded] = useState(false)
 
   const [customerName, setCustomerName] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
@@ -656,70 +657,6 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                     </div>
                   )
                 })}
-
-                {/* Cart */}
-                {cartItems.length > 0 && (
-                  <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-                    <h3 className="mb-3 flex items-center gap-2 font-semibold dark:text-white">
-                      <ShoppingCart className="h-5 w-5 text-blue-600" /> Ihre Auswahl
-                    </h3>
-                    <div className="space-y-3">
-                      {cartItems.map((item, idx) => (
-                        <div key={item.uid} className="rounded-lg bg-white p-3 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-700">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-medium dark:text-white">
-                                {cartItems.length > 1 && <span className="text-gray-400">{idx + 1}. </span>}
-                                {item.offering.name}
-                              </div>
-                              {showPrice && (
-                                <div className="text-sm text-gray-500">{formatPrice(itemPriceCents(item))}</div>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => removeFromCart(item.uid)}
-                              className="flex-shrink-0 text-gray-400 hover:text-red-600"
-                              title="Entfernen"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          {/* Add-ons for this line */}
-                          {addonOfferings.filter((a) => a.id !== item.offering.id).length > 0 && (
-                            <div className="mt-2 border-t border-gray-100 pt-2 dark:border-slate-700">
-                              <div className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Zusatzleistungen (optional)
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {addonOfferings
-                                  .filter((a) => a.id !== item.offering.id)
-                                  .map((addon) => {
-                                    const active = item.addons.some((a) => a.id === addon.id)
-                                    return (
-                                      <button
-                                        key={addon.id}
-                                        onClick={() => toggleAddon(item.uid, addon)}
-                                        className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                                          active
-                                            ? 'border-blue-600 bg-blue-600 text-white'
-                                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200'
-                                        }`}
-                                      >
-                                        {active ? '✓ ' : '+ '}
-                                        {addon.name}
-                                        {showPrice && addon.price_cents ? ` (${formatPrice(addon.price_cents)})` : ''}
-                                      </button>
-                                    )
-                                  })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1035,25 +972,111 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
 
       {/* Sticky cart bar (service selection step) */}
       {step === 2 && cartItems.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <ShoppingCart className="h-6 w-6 text-blue-600" />
-                <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1 text-[11px] font-bold text-white">
-                  {cartItems.length}
-                </span>
+        <>
+          {/* Backdrop when expanded (mobile-friendly tap-to-close) */}
+          {cartExpanded && (
+            <div
+              className="fixed inset-0 z-20 bg-black/30"
+              onClick={() => setCartExpanded(false)}
+              aria-hidden="true"
+            />
+          )}
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+            {/* Expandable cart contents */}
+            {cartExpanded && (
+              <div className="mx-auto max-w-2xl px-4">
+                <div className="max-h-[60vh] overflow-y-auto py-4">
+                  <h3 className="mb-3 flex items-center gap-2 font-semibold dark:text-white">
+                    <ShoppingCart className="h-5 w-5 text-blue-600" /> Ihre Auswahl
+                  </h3>
+                  <div className="space-y-3">
+                    {cartItems.map((item, idx) => (
+                      <div key={item.uid} className="rounded-lg bg-gray-50 p-3 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-700">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium dark:text-white">
+                              {cartItems.length > 1 && <span className="text-gray-400">{idx + 1}. </span>}
+                              {item.offering.name}
+                            </div>
+                            {showPrice && (
+                              <div className="text-sm text-gray-500">{formatPrice(itemPriceCents(item))}</div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => removeFromCart(item.uid)}
+                            className="flex-shrink-0 text-gray-400 hover:text-red-600"
+                            title="Entfernen"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Add-ons for this line */}
+                        {addonOfferings.filter((a) => a.id !== item.offering.id).length > 0 && (
+                          <div className="mt-2 border-t border-gray-100 pt-2 dark:border-slate-700">
+                            <div className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                              Zusatzleistungen (optional)
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {addonOfferings
+                                .filter((a) => a.id !== item.offering.id)
+                                .map((addon) => {
+                                  const active = item.addons.some((a) => a.id === addon.id)
+                                  return (
+                                    <button
+                                      key={addon.id}
+                                      onClick={() => toggleAddon(item.uid, addon)}
+                                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                                        active
+                                          ? 'border-blue-600 bg-blue-600 text-white'
+                                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200'
+                                      }`}
+                                    >
+                                      {active ? '✓ ' : '+ '}
+                                      {addon.name}
+                                      {showPrice && addon.price_cents ? ` (${formatPrice(addon.price_cents)})` : ''}
+                                    </button>
+                                  )
+                                })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              {showPrice && (
-                <span className="font-semibold text-gray-900 dark:text-white">{formatPrice(cartTotalCents)}</span>
-              )}
+            )}
+
+            {/* Bar */}
+            <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setCartExpanded((v) => !v)}
+                className="flex min-w-0 items-center gap-2 rounded-lg py-1 pr-2 text-left hover:opacity-80"
+                aria-expanded={cartExpanded}
+                aria-label={cartExpanded ? 'Auswahl ausblenden' : 'Auswahl anzeigen'}
+              >
+                <div className="relative">
+                  <ShoppingCart className="h-6 w-6 text-blue-600" />
+                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1 text-[11px] font-bold text-white">
+                    {cartItems.length}
+                  </span>
+                </div>
+                {showPrice && (
+                  <span className="font-semibold text-gray-900 dark:text-white">{formatPrice(cartTotalCents)}</span>
+                )}
+                <ChevronUp
+                  className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${cartExpanded ? 'rotate-180' : ''}`}
+                />
+              </button>
+              <Button onClick={proceedFromCart} className="flex items-center gap-2">
+                Zur Buchung
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-            <Button onClick={proceedFromCart} className="flex items-center gap-2">
-              Zur Buchung
-              <ChevronRight className="h-4 w-4" />
-            </Button>
           </div>
-        </div>
+        </>
       )}
     </div>
   )
