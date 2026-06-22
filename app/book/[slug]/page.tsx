@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,6 @@ import {
   getRequiredCustomerFields,
   getPrivacyPolicyUrl,
   isFutureBookingStart,
-  isSameOrAfterLocalDay,
   withPastSlotsUnavailable,
 } from '@/lib/booking-policy'
 import { getDemoStaffMembers, isDemoLocationId } from '@/lib/public-demo'
@@ -26,6 +25,7 @@ import {
   PublicBookingSubmissionError,
   type BookingSubmissionError,
 } from '@/components/PublicBookingSubmissionError'
+import { AvailabilityDatePicker, type DayInfo } from '@/components/AvailabilityDatePicker'
 
 interface OrgInfo {
   id: string
@@ -97,6 +97,13 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
+  // Day-level availability (for the calendar/strip) and the next free day, so
+  // customers can jump straight to an open day instead of stepping day-by-day.
+  const [dayInfo, setDayInfo] = useState<Record<string, DayInfo>>({})
+  const [daysLoading, setDaysLoading] = useState(false)
+  const [nextAvailableDate, setNextAvailableDate] = useState<string | null>(null)
+  const loadedRangesRef = useRef<Set<string>>(new Set())
+  const lastNextFromRef = useRef<string | null>(null)
   const [fallbackReason, setFallbackReason] = useState<string | null>(null)
   const [fallbackSlot, setFallbackSlot] = useState<TimeSlot | null>(null)
   const [closedReason, setClosedReason] = useState<string | null>(null)
@@ -336,6 +343,97 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       setLoading(false)
     }
   }
+
+  // Identifies what the day-level availability depends on (location, the booked
+  // durations, and the preferred staff). When it changes the cached day map is
+  // stale and must be thrown away.
+  const dayScopeKey = useMemo(() => {
+    if (!selectedLocation || cartItems.length === 0) return ''
+    if (isMultiPerson) {
+      return `${selectedLocation.id}|multi|${cartItems.map(itemDuration).join(',')}`
+    }
+    return `${selectedLocation.id}|single|${itemDuration(cartItems[0])}|${selectedStaff?.id || 'any'}`
+  }, [selectedLocation, cartItems, selectedStaff, isMultiPerson])
+
+  useEffect(() => {
+    setDayInfo({})
+    setNextAvailableDate(null)
+    loadedRangesRef.current = new Set()
+    lastNextFromRef.current = null
+  }, [dayScopeKey])
+
+  function buildDayParams(fromStr: string, toStr: string): URLSearchParams | null {
+    if (!selectedLocation || cartItems.length === 0) return null
+    const params = new URLSearchParams({ locationId: selectedLocation.id, from: fromStr, to: toStr })
+    if (isMultiPerson) {
+      params.set('durations', cartItems.map(itemDuration).join(','))
+    } else {
+      params.set('duration', String(itemDuration(cartItems[0])))
+      params.set('offeringId', cartItems[0].offering.id)
+      if (selectedStaff) params.set('preferredStaffId', selectedStaff.id)
+    }
+    return params
+  }
+
+  function mergeDays(days?: Array<{ date: string; available: boolean; closed: boolean }>) {
+    if (!days || days.length === 0) return
+    setDayInfo((prev) => {
+      const next = { ...prev }
+      for (const d of days) next[d.date] = { available: d.available, closed: d.closed }
+      return next
+    })
+  }
+
+  // Loads per-day availability for [from, to] (the calendar/strip shading).
+  // Deduplicated per visible range within the current scope.
+  async function loadDayAvailability(fromStr: string, toStr: string) {
+    const sig = `${fromStr}_${toStr}`
+    if (loadedRangesRef.current.has(sig)) return
+    loadedRangesRef.current.add(sig)
+    const params = buildDayParams(fromStr, toStr)
+    if (!params) return
+    setDaysLoading(true)
+    try {
+      const res = await fetch(`/api/availability/range?${params}`)
+      const data = await res.json()
+      mergeDays(data.days)
+    } catch {
+      loadedRangesRef.current.delete(sig)
+    } finally {
+      setDaysLoading(false)
+    }
+  }
+
+  // Finds the next free day from `fromStr` (looks up to ~3 months ahead). Used to
+  // surface "next available appointment" when the chosen day has no open slots.
+  async function loadNextAvailableFrom(fromStr: string) {
+    if (lastNextFromRef.current === fromStr) return
+    lastNextFromRef.current = fromStr
+    const toStr = format(new Date(new Date(fromStr).getTime() + 41 * 86400000), 'yyyy-MM-dd')
+    const params = buildDayParams(fromStr, toStr)
+    if (!params) return
+    try {
+      const res = await fetch(`/api/availability/range?${params}`)
+      const data = await res.json()
+      mergeDays(data.days)
+      setNextAvailableDate(data.nextAvailableDate ?? null)
+    } catch {
+      lastNextFromRef.current = null
+    }
+  }
+
+  // When the selected day is open but has no free slots (e.g. staff on holiday),
+  // look up the next free day so the customer can jump there in one tap.
+  useEffect(() => {
+    if (step !== 4 || loading) return
+    const hasSlots = availableSlots.some((s) => s.available)
+    if (hasSlots || closedReason) {
+      setNextAvailableDate(null)
+      return
+    }
+    loadNextAvailableFrom(format(selectedDate, 'yyyy-MM-dd'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableSlots, loading, closedReason, step, selectedDate])
 
   function addToCart(offering: Offering) {
     setCartItems((prev) => [...prev, { uid: makeUid(), offering, addons: [] }])
@@ -727,31 +825,18 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 Für {cartItems.length} Personen – es werden nur Zeiten angezeigt, an denen genügend Mitarbeiter gleichzeitig frei sind.
               </p>
             )}
-            <div className="flex items-center justify-between mb-4">
-              <button
-                onClick={() => {
-                  const d = new Date(selectedDate)
-                  d.setDate(d.getDate() - 1)
-                  if (isSameOrAfterLocalDay(d)) { setLoading(true); setSelectedDate(d) }
-                }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-              >
-                <ChevronLeft className="w-5 h-5 dark:text-white" />
-              </button>
-              <span className="font-medium dark:text-white">
-                {selectedDate.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
-              </span>
-              <button
-                onClick={() => {
-                  const d = new Date(selectedDate)
-                  d.setDate(d.getDate() + 1)
+            <div className="mb-4">
+              <AvailabilityDatePicker
+                selectedDate={selectedDate}
+                onSelect={(d) => {
                   setLoading(true)
+                  setSelectedSlot(null)
                   setSelectedDate(d)
                 }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-              >
-                <ChevronRight className="w-5 h-5 dark:text-white" />
-              </button>
+                dayInfo={dayInfo}
+                onRangeNeeded={loadDayAvailability}
+                loading={daysLoading}
+              />
             </div>
             {loading ? (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
@@ -816,8 +901,34 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                     </button>
                   ))}
                   {!closedReason && availableSlots.filter((s) => s.available).length === 0 && (
-                    <div className="col-span-full text-center py-4 text-gray-500">
-                      Keine freien Termine für dieses Datum
+                    <div className="col-span-full py-2 text-center">
+                      <p className="text-gray-500 dark:text-gray-400">
+                        Keine freien Termine an diesem Tag
+                      </p>
+                      {nextAvailableDate && nextAvailableDate !== format(selectedDate, 'yyyy-MM-dd') ? (
+                        <button
+                          onClick={() => {
+                            setLoading(true)
+                            setSelectedSlot(null)
+                            setSelectedDate(new Date(`${nextAvailableDate}T12:00:00`))
+                          }}
+                          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                        >
+                          <Calendar className="h-4 w-4" />
+                          Nächster freier Termin:{' '}
+                          {new Date(`${nextAvailableDate}T12:00:00`).toLocaleDateString('de-DE', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'long',
+                          })}
+                        </button>
+                      ) : (
+                        !nextAvailableDate && (
+                          <p className="mt-1 text-sm text-gray-400">
+                            Aktuell keine freien Termine in den nächsten Wochen.
+                          </p>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
