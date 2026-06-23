@@ -139,44 +139,51 @@ export function AvailabilityDatePicker({
   const canGoPrevMonth = startOfMonth(addMonths(viewMonth, -1)) >= startOfMonth(today)
 
   return (
-    <div className="relative">
+    <div className="relative space-y-3">
       {/* Kopf: gewählter Tag öffnet die Monatsansicht */}
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-2.5 dark:border-slate-700/80 dark:bg-slate-800/50">
         <button
           type="button"
           onClick={() => setCalendarOpen((v) => !v)}
-          className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left font-medium text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-slate-700"
+          className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-white dark:hover:bg-slate-800"
           aria-expanded={calendarOpen}
           aria-label="Monatsansicht öffnen"
         >
-          <Calendar className="h-5 w-5 text-blue-600" />
-          <span className="capitalize">
-            {new Intl.DateTimeFormat('de-DE', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            }).format(selected)}
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+            <Calendar className="h-5 w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Gewählter Tag
+            </span>
+            <span className="block truncate font-bold capitalize text-slate-950 dark:text-white">
+              {new Intl.DateTimeFormat('de-DE', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              }).format(selected)}
+            </span>
           </span>
           <ChevronRight
-            className={`h-4 w-4 text-gray-400 transition-transform ${calendarOpen ? 'rotate-90' : ''}`}
+            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${calendarOpen ? 'rotate-90' : ''}`}
           />
         </button>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 rounded-xl bg-white/80 p-1 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-700">
           <button
             type="button"
             onClick={() => scrollStrip(-1)}
-            className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700"
+            className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label="Frühere Tage"
           >
-            <ChevronLeft className="h-5 w-5 text-gray-500 dark:text-gray-300" />
+            <ChevronLeft className="h-5 w-5 text-slate-500 dark:text-slate-300" />
           </button>
           <button
             type="button"
             onClick={() => scrollStrip(1)}
-            className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700"
+            className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label="Spätere Tage"
           >
-            <ChevronRight className="h-5 w-5 text-gray-500 dark:text-gray-300" />
+            <ChevronRight className="h-5 w-5 text-slate-500 dark:text-slate-300" />
           </button>
         </div>
       </div>
@@ -184,7 +191,10 @@ export function AvailabilityDatePicker({
       {/* Horizontale Tages-Leiste */}
       <div
         ref={stripRef}
-        className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="Tagesleiste"
+        className={calendarOpen
+          ? 'hidden'
+          : '-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}
       >
         {stripDays.map((day) => {
           const state = dayState(day)
@@ -196,20 +206,20 @@ export function AvailabilityDatePicker({
               type="button"
               onClick={() => !disabled && pick(day)}
               disabled={disabled && !isSelected}
-              className={`flex min-w-[3.25rem] flex-col items-center rounded-xl border px-2 py-2 transition-all ${
+              className={`flex h-16 min-w-[3rem] flex-col items-center justify-center rounded-xl border px-2 transition-all ${
                 isSelected
-                  ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                  ? 'border-blue-600 bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-md shadow-blue-600/20'
                   : disabled
-                    ? 'border-transparent text-gray-300 dark:text-gray-600'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-blue-400 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200'
+                    ? 'border-transparent bg-transparent text-slate-300 dark:text-slate-600'
+                    : 'border-slate-200 bg-white/90 text-slate-700 shadow-sm shadow-slate-950/5 hover:border-blue-400 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:border-blue-500/70 dark:hover:bg-blue-950/30'
               }`}
             >
-              <span className="text-[11px] font-medium uppercase">
+              <span className="text-[10px] font-bold uppercase tracking-wide">
                 {WEEKDAYS_SHORT[mondayIndex(day)]}
               </span>
-              <span className="text-base font-semibold leading-tight">{day.getDate()}</span>
+              <span className="text-lg font-bold leading-tight">{day.getDate()}</span>
               <span
-                className={`mt-1 h-1.5 w-1.5 rounded-full ${
+                className={`mt-0.5 h-1.5 w-1.5 rounded-full ${
                   isSelected
                     ? 'bg-white'
                     : state === 'available'
@@ -222,7 +232,7 @@ export function AvailabilityDatePicker({
         })}
       </div>
 
-      {/* Monats-Popover */}
+      {/* Ausgeklappte Monatsansicht */}
       {calendarOpen && (
         <>
           <div
@@ -230,24 +240,24 @@ export function AvailabilityDatePicker({
             onClick={() => setCalendarOpen(false)}
             aria-hidden="true"
           />
-          <div className="absolute left-0 right-0 top-12 z-40 rounded-2xl border border-gray-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+          <div className="relative z-40 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => canGoPrevMonth && setViewMonth(addMonths(viewMonth, -1))}
                 disabled={!canGoPrevMonth}
-                className="rounded p-1.5 enabled:hover:bg-gray-100 disabled:opacity-30 dark:enabled:hover:bg-slate-700"
+                className="flex h-9 w-9 items-center justify-center rounded-lg enabled:hover:bg-slate-100 disabled:opacity-30 dark:enabled:hover:bg-slate-800"
                 aria-label="Vorheriger Monat"
               >
                 <ChevronLeft className="h-5 w-5 dark:text-white" />
               </button>
-              <span className="font-semibold capitalize text-gray-900 dark:text-white">
+              <span className="font-bold capitalize text-slate-950 dark:text-white">
                 {monthTitle}
               </span>
               <button
                 type="button"
                 onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700"
+                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                 aria-label="Nächster Monat"
               >
                 <ChevronRight className="h-5 w-5 dark:text-white" />
@@ -258,7 +268,7 @@ export function AvailabilityDatePicker({
               {WEEKDAYS_SHORT.map((wd) => (
                 <div
                   key={wd}
-                  className="py-1 text-center text-[11px] font-medium uppercase text-gray-400"
+                  className="py-1 text-center text-[11px] font-bold uppercase tracking-wide text-slate-400"
                 >
                   {wd}
                 </div>
@@ -280,12 +290,12 @@ export function AvailabilityDatePicker({
                     disabled={!selectable}
                     className={`relative flex h-10 items-center justify-center rounded-lg text-sm transition-colors ${
                       isSelected
-                        ? 'bg-blue-600 font-semibold text-white'
+                        ? 'bg-gradient-to-b from-blue-500 to-blue-600 font-bold text-white shadow-sm shadow-blue-600/20'
                         : state === 'available'
-                          ? 'font-medium text-gray-900 hover:bg-blue-100 dark:text-white dark:hover:bg-blue-900/40'
+                          ? 'font-semibold text-slate-950 hover:bg-blue-100 dark:text-white dark:hover:bg-blue-950/40'
                           : state === 'unknown'
-                            ? 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-slate-700'
-                            : 'text-gray-300 line-through dark:text-gray-600'
+                            ? 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                            : 'text-slate-300 line-through dark:text-slate-600'
                     } ${isToday && !isSelected ? 'ring-1 ring-blue-400' : ''}`}
                   >
                     {day.getDate()}
@@ -297,7 +307,7 @@ export function AvailabilityDatePicker({
               })}
             </div>
 
-            <div className="mt-3 flex items-center justify-center gap-4 text-[11px] text-gray-500 dark:text-gray-400">
+            <div className="mt-3 flex items-center justify-center gap-4 text-[11px] font-medium text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> frei
               </span>

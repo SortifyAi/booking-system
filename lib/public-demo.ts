@@ -1,4 +1,5 @@
 import { zonedTimeToUtc } from './timezone'
+import { isFutureBookingStart } from './booking-policy'
 
 export const DEMO_BOOKING_SLUG = 'salon-nordlicht'
 export const DEMO_TIMEZONE = 'Europe/Berlin'
@@ -52,6 +53,7 @@ export const demoOfferings = [
     location_id: demoLocations[0].id,
     organization_id: demoOrganization.id,
     is_active: true,
+    available_as_addon: false,
   },
   {
     id: '33333333-3333-4333-8333-333333333332',
@@ -63,6 +65,7 @@ export const demoOfferings = [
     location_id: demoLocations[0].id,
     organization_id: demoOrganization.id,
     is_active: true,
+    available_as_addon: false,
   },
   {
     id: '33333333-3333-4333-8333-333333333333',
@@ -74,6 +77,45 @@ export const demoOfferings = [
     location_id: demoLocations[0].id,
     organization_id: demoOrganization.id,
     is_active: true,
+    available_as_addon: false,
+  },
+  // Add-ons (Zusatzleistungen): can be booked standalone or attached to any
+  // service – they power the inline "Zusatzleistungen" picker in the flow.
+  {
+    id: '33333333-3333-4333-8333-333333333334',
+    name: 'Kopfmassage',
+    description: 'Entspannende Massage während der Wäsche',
+    duration_minutes: 15,
+    price_cents: 1500,
+    color: '#F59E0B',
+    location_id: demoLocations[0].id,
+    organization_id: demoOrganization.id,
+    is_active: true,
+    available_as_addon: true,
+  },
+  {
+    id: '33333333-3333-4333-8333-333333333335',
+    name: 'Intensiv-Haarkur',
+    description: 'Pflegende Treatment-Maske für gesundes Haar',
+    duration_minutes: 20,
+    price_cents: 1900,
+    color: '#8B5CF6',
+    location_id: demoLocations[0].id,
+    organization_id: demoOrganization.id,
+    is_active: true,
+    available_as_addon: true,
+  },
+  {
+    id: '33333333-3333-4333-8333-333333333336',
+    name: 'Augenbrauen formen',
+    description: 'Zupfen und in Form bringen',
+    duration_minutes: 15,
+    price_cents: 1200,
+    color: '#EC4899',
+    location_id: demoLocations[0].id,
+    organization_id: demoOrganization.id,
+    is_active: true,
+    available_as_addon: true,
   },
 ]
 
@@ -237,4 +279,47 @@ export function buildDemoAvailability({
     date,
     staffAvailabilities,
   }
+}
+
+// Multi-person (cart) availability for the demo: several people start in
+// parallel, so we offer a 30-min grid during opening hours as long as we don't
+// exceed the demo staff capacity. Mirrors the shape of /api/availability/cart.
+export function buildDemoCartAvailability({
+  date,
+  durations,
+  now = new Date(),
+}: {
+  date: string
+  durations: number[]
+  now?: Date
+}) {
+  const emptyResult = {
+    type: 'cart' as const,
+    date,
+    slots: [] as { startTime: string; endTime: string; available: boolean }[],
+  }
+
+  const [year, month, day] = date.split('-').map(Number)
+  const dayOfWeek = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1)).getUTCDay()
+  const hours = demoLocations[0].settings.openingHours.find((h) => h.day === dayOfWeek)
+
+  // Closed that day, or more people than staff can serve simultaneously.
+  if (!hours || hours.closed || durations.length > demoStaffMembers.length) {
+    return emptyResult
+  }
+
+  const maxDuration = Math.max(...durations)
+  const [openH, openM] = hours.open.split(':').map(Number)
+  const [closeH, closeM] = hours.close.split(':').map(Number)
+  const closeMinutes = closeH * 60 + closeM
+
+  const slots = emptyResult.slots
+  for (let mins = openH * 60 + openM; mins + maxDuration <= closeMinutes; mins += 30) {
+    const start = zonedTimeToUtc(date, Math.floor(mins / 60), mins % 60, DEMO_TIMEZONE)
+    if (!isFutureBookingStart(start, now)) continue
+    const end = new Date(start.getTime() + maxDuration * 60 * 1000)
+    slots.push({ startTime: start.toISOString(), endTime: end.toISOString(), available: true })
+  }
+
+  return { type: 'cart' as const, date, slots }
 }

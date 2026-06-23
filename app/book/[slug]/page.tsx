@@ -666,6 +666,8 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
           imageUrl: selectedSlot.staffImageUrl ?? null,
         }
       : null)
+  const availableSlotsForDay = availableSlots.filter((slot) => slot.available)
+  const availableSlotCount = availableSlotsForDay.length
 
   const showPrice = getShowPrices(org?.settings)
   const showDur = getShowDuration(org?.settings)
@@ -979,12 +981,27 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                 loading={daysLoading}
               />
             </div>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Freie Zeiten
+                </h3>
+                <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                  {loading
+                    ? 'Verfügbarkeit wird geprüft'
+                    : availableSlotCount === 1 ? '1 Termin verfügbar' : `${availableSlotCount} Termine verfügbar`}
+                </p>
+              </div>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+                <Clock className="h-5 w-5" />
+              </span>
+            </div>
             {loading ? (
               <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-11 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800"
+                    className="h-12 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800"
                   />
                 ))}
               </div>
@@ -1028,12 +1045,12 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                   </div>
                 )}
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {availableSlots.filter((s) => s.available).map((slot, idx) => (
+                  {availableSlotsForDay.map((slot, idx) => (
                     <button
                       key={idx}
                       onClick={() => { setSelectedSlot(slot); setStep(5) }}
                       className={cn(
-                        'h-11 rounded-xl px-3 text-sm font-bold transition-all duration-200',
+                        'h-12 rounded-xl px-3 text-sm font-bold transition-all duration-200',
                         selectedSlot?.startTime === slot.startTime
                           ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-md shadow-blue-600/20'
                           : 'border border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/70 dark:hover:bg-blue-950/40 dark:hover:text-blue-200'
@@ -1042,9 +1059,9 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                       {formatTime(slot.startTime)}
                     </button>
                   ))}
-                  {!closedReason && availableSlots.filter((s) => s.available).length === 0 && (
-                    <div className="col-span-full py-2 text-center">
-                      <p className="text-slate-500 dark:text-slate-400">
+                  {!closedReason && availableSlotCount === 0 && (
+                    <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-center dark:border-slate-700 dark:bg-slate-800/60">
+                      <p className="font-semibold text-slate-700 dark:text-slate-200">
                         Keine freien Termine an diesem Tag
                       </p>
                       {nextAvailableDate && nextAvailableDate !== format(selectedDate, 'yyyy-MM-dd') ? (

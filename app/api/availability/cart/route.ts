@@ -21,6 +21,7 @@ import { BUSINESS_HOURS } from '@/lib/constants'
 import { zonedTimeToUtc } from '@/lib/timezone'
 import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
 import { isFutureBookingStart } from '@/lib/booking-policy'
+import { buildDemoCartAvailability, isDemoLocationId } from '@/lib/public-demo'
 
 const cartAvailabilitySchema = z.object({
   locationId: z.string().uuid(),
@@ -52,6 +53,10 @@ export async function GET(request: NextRequest) {
 
     const { locationId, date, durations } = validationResult.data
     const now = new Date()
+
+    if (isDemoLocationId(locationId)) {
+      return NextResponse.json(buildDemoCartAvailability({ date, durations, now }))
+    }
 
     const client = getSupabaseAdmin()
 
