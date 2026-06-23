@@ -796,7 +796,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                         inCart > 0 ? selectionCardActiveClass : selectionCardIdleClass
                       )}
                     >
-                      <div className="flex items-center justify-between gap-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-center gap-3">
                           {offering.image_url ? (
                             <img
@@ -855,7 +855,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                         ) : (
                           <button
                             onClick={() => addToCart(offering)}
-                            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-b from-blue-500 to-blue-600 px-4 text-sm font-bold text-white shadow-sm shadow-blue-600/20 transition hover:to-blue-700 active:scale-[0.98]"
+                            className="h-10 self-end px-3.5 text-sm sm:h-11 sm:px-4 flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-b from-blue-500 to-blue-600 font-bold text-white shadow-sm shadow-blue-600/20 transition hover:to-blue-700 active:scale-[0.98]"
                           >
                             <Plus className="h-4 w-4" />
                             Hinzufügen
@@ -1237,14 +1237,14 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/80 bg-white/90 shadow-[0_-18px_50px_-28px_rgba(15,23,42,0.65)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-950/90">
             {/* Expandable cart contents */}
             {cartExpanded && (
-              <div className="mx-auto max-w-3xl px-4 sm:px-6">
-                <div className="max-h-[60vh] overflow-y-auto py-4">
-                  <h3 className="mb-3 flex items-center gap-2 font-bold text-slate-950 dark:text-white">
+              <div className="border-b border-slate-200/70 px-4 py-3 dark:border-slate-800">
+                <div className="mx-auto max-w-3xl sm:px-2">
+                  <h3 className="mb-2 flex items-center gap-2 text-base font-bold text-slate-950 dark:text-white">
                     <ShoppingCart className="h-5 w-5 text-blue-600" /> Ihre Auswahl
                   </h3>
-                  <div className="space-y-3">
+                  <div className="max-h-[46vh] space-y-2 overflow-y-auto pb-1">
                     {cartItems.map((item, idx) => (
-                      <div key={item.uid} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                      <div key={item.uid} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/95 p-3 dark:border-slate-700/80 dark:bg-slate-900/85">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-semibold text-slate-950 dark:text-white">
@@ -1287,28 +1287,28 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
             )}
 
             {/* Bar */}
-            <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-6 sm:py-3">
               <button
                 type="button"
                 onClick={() => setCartExpanded((v) => !v)}
-                className="flex min-w-0 items-center gap-3 rounded-xl py-1 pr-2 text-left transition hover:opacity-85"
+                className="flex min-w-0 items-center gap-2 rounded-xl py-1 pr-1 text-left transition hover:opacity-85 sm:gap-3 sm:pr-2"
                 aria-expanded={cartExpanded}
                 aria-label={cartExpanded ? 'Auswahl ausblenden' : 'Auswahl anzeigen'}
               >
-                <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-                  <ShoppingCart className="h-6 w-6" />
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 sm:h-11 sm:w-11 sm:rounded-2xl">
+                  <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6" />
                   <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1 text-[11px] font-bold text-white shadow-sm">
                     {cartItems.length}
                   </span>
                 </div>
                 {showPrice && (
-                  <span className="text-xl font-bold text-slate-950 dark:text-white">{formatPrice(cartTotalCents)}</span>
+                  <span className="text-xl font-bold text-slate-950 dark:text-white sm:text-2xl">{formatPrice(cartTotalCents)}</span>
                 )}
                 <ChevronUp
                   className={`h-5 w-5 text-slate-400 transition-transform duration-200 ${cartExpanded ? 'rotate-180' : ''}`}
                 />
               </button>
-              <Button onClick={proceedFromCart} className="flex h-12 min-w-[150px] items-center gap-2 px-5 text-base">
+              <Button onClick={proceedFromCart} className="h-11 min-w-[132px] px-4 text-sm sm:h-12 sm:min-w-[150px] sm:text-base flex items-center gap-1.5 sm:gap-2">
                 Zur Buchung
                 <ChevronRight className="h-4 w-4" />
               </Button>
