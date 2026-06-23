@@ -423,7 +423,7 @@ export async function GET(request: NextRequest) {
 
       if (preferredId && preferredStaffAvailableSlots.length === 0) {
         if (!preferredAvailability) {
-          reason = 'Preferred staff cannot perform selected offering'
+          reason = 'Der gewünschte Mitarbeiter bietet diese Leistung nicht an.'
         }
         const allAvailableSlots = staffAvailabilities.flatMap(s =>
           s.slots
@@ -454,9 +454,9 @@ export async function GET(request: NextRequest) {
             staffName: earliest.staffName,
             staffImageUrl: earliest.staffImageUrl ?? null,
           }
-          if (!reason) reason = 'Preferred staff has no availability for selected date'
+          if (!reason) reason = 'Der gewünschte Mitarbeiter hat an diesem Tag keinen freien Termin.'
         } else {
-          reason = 'No staff availability for selected date'
+          reason = 'An diesem Tag sind keine Termine verfügbar.'
         }
       }
 

@@ -48,20 +48,24 @@ export function PublicBookingPrivacyNotice({ checked, onCheckedChange, privacyUr
 export function PublicBookingFooter({ privacyUrl }: { privacyUrl?: string }) {
   const datenschutzUrl = privacyUrl || DATENSCHUTZ_URL
   return (
-    <footer className="mt-8 pb-8 text-center text-sm text-gray-500 dark:text-gray-400">
+    <footer className="mt-8 pb-8 text-center text-sm text-slate-500 dark:text-slate-400">
       <a
         href={LANDING_PAGE_URL}
-        className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-gray-600 transition hover:bg-white/70 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-slate-800/70 dark:hover:text-white"
+        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/70 px-3.5 py-2 text-slate-600 shadow-sm shadow-slate-950/5 backdrop-blur transition hover:border-slate-300 hover:bg-white hover:text-slate-950 dark:border-slate-700/70 dark:bg-slate-900/55 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:hover:text-white"
       >
         <span>Powered by</span>
-        <img src="/brand/bookanord-logo.png" alt="bookanord" className="h-5 w-auto" />
+        <img
+          src="/brand/bookanord-logo.png"
+          alt="bookanord"
+          className="h-5 w-auto dark:brightness-0 dark:invert"
+        />
       </a>
       <div className="mt-2 flex items-center justify-center gap-3">
-        <a href={IMPRESSUM_URL} className="hover:text-gray-900 hover:underline dark:hover:text-white">
+        <a href={IMPRESSUM_URL} className="hover:text-slate-900 hover:underline dark:hover:text-white">
           Impressum
         </a>
         <span aria-hidden="true">|</span>
-        <a href={datenschutzUrl} className="hover:text-gray-900 hover:underline dark:hover:text-white">
+        <a href={datenschutzUrl} className="hover:text-slate-900 hover:underline dark:hover:text-white">
           Datenschutz
         </a>
       </div>
