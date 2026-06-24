@@ -137,6 +137,16 @@ export function AvailabilityDatePicker({
     ...Array.from({ length: monthEnd.getDate() }, (_, i) => addDays(monthStart, i)),
   ]
   const canGoPrevMonth = startOfMonth(addMonths(viewMonth, -1)) >= startOfMonth(today)
+  const mobileSelectedDateLabel = new Intl.DateTimeFormat('de-DE', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+  }).format(selected)
+  const fullSelectedDateLabel = new Intl.DateTimeFormat('de-DE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(selected)
 
   return (
     <div className="relative space-y-3">
@@ -145,7 +155,7 @@ export function AvailabilityDatePicker({
         <button
           type="button"
           onClick={() => setCalendarOpen((v) => !v)}
-          className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-white dark:hover:bg-slate-800"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-white dark:hover:bg-slate-800"
           aria-expanded={calendarOpen}
           aria-label="Monatsansicht öffnen"
         >
@@ -156,12 +166,11 @@ export function AvailabilityDatePicker({
             <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Gewählter Tag
             </span>
-            <span className="block truncate font-bold capitalize text-slate-950 dark:text-white">
-              {new Intl.DateTimeFormat('de-DE', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              }).format(selected)}
+            <span className="block whitespace-nowrap text-[15px] font-bold capitalize text-slate-950 dark:text-white sm:hidden">
+              {mobileSelectedDateLabel}
+            </span>
+            <span className="hidden whitespace-nowrap font-bold capitalize text-slate-950 dark:text-white sm:block">
+              {fullSelectedDateLabel}
             </span>
           </span>
           <ChevronRight
