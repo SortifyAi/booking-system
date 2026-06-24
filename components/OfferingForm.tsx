@@ -44,6 +44,7 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
     durationMinutes: 60,
     price: '',
     availableAsAddon: false,
+    isStandaloneBookable: true,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -92,6 +93,7 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
       capacity: 1,
       priceCents: priceNumber !== null ? Math.round(priceNumber * 100) : undefined,
       availableAsAddon: formData.availableAsAddon,
+      isStandaloneBookable: formData.isStandaloneBookable,
     };
 
     const schema = isMockMode()
@@ -139,7 +141,14 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
       }
 
       toast.success('Leistung erfolgreich erstellt');
-      setFormData({ name: '', description: '', durationMinutes: 60, price: '', availableAsAddon: false });
+      setFormData({
+        name: '',
+        description: '',
+        durationMinutes: 60,
+        price: '',
+        availableAsAddon: false,
+        isStandaloneBookable: true,
+      });
       setImageFile(null);
       onCreated?.(created);
       onCancel?.();
@@ -294,6 +303,31 @@ export function OfferingForm({ onCreated, onCancel }: OfferingFormProps) {
           </span>
         </span>
       </label>
+
+      {formData.availableAsAddon && (
+        <label className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/50 dark:bg-blue-950/20">
+          <input
+            type="checkbox"
+            checked={formData.isStandaloneBookable}
+            onChange={(event) =>
+              setFormData({
+                ...formData,
+                isStandaloneBookable: event.target.checked,
+              })
+            }
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span className="text-sm">
+            <span className="font-medium text-gray-900 dark:text-slate-100">
+              Auch einzeln buchbar
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500 dark:text-slate-400">
+              Deaktiviert erscheint diese Leistung nur als Zusatz zu einer
+              Hauptleistung.
+            </span>
+          </span>
+        </label>
+      )}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={isPending || uploadingImage} className="flex-1">

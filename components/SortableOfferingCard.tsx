@@ -28,6 +28,7 @@ interface SortableOfferingCardProps {
   onMoveDown: () => void
   onDelete: () => void
   onToggleAddon: (value: boolean) => void
+  onToggleStandalone: (value: boolean) => void
   onUpdated: (offering: unknown) => void
 }
 
@@ -41,6 +42,7 @@ export function SortableOfferingCard({
   onMoveDown,
   onDelete,
   onToggleAddon,
+  onToggleStandalone,
   onUpdated,
 }: SortableOfferingCardProps) {
   const {
@@ -162,6 +164,26 @@ export function SortableOfferingCard({
         />
         Als Zusatzleistung anbieten
       </label>
+
+      {service.available_as_addon && (
+        <label className="mt-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-gray-600 dark:bg-slate-800/60 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={service.is_standalone_bookable !== false}
+            onChange={(event) => onToggleStandalone(event.target.checked)}
+            disabled={disabled}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+          />
+          <span>
+            <span className="block font-semibold text-slate-800 dark:text-slate-100">
+              Auch einzeln buchbar
+            </span>
+            <span className="mt-0.5 block text-slate-500 dark:text-slate-400">
+              Deaktiviert erscheint sie nur als Zusatz zu einer Hauptleistung.
+            </span>
+          </span>
+        </label>
+      )}
 
       <OfferingImageUploadControl offering={service} onUpdated={onUpdated} />
     </article>

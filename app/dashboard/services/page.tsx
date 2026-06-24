@@ -305,6 +305,34 @@ export default function ServicesPage() {
     }
   }
 
+  const handleToggleStandalone = async (id: string, value: boolean) => {
+    const previousServices = services
+    setServices((previous) =>
+      previous.map((service) =>
+        service.id === id ? { ...service, is_standalone_bookable: value } : service
+      )
+    )
+
+    if (isMockMode()) return
+
+    try {
+      const response = await fetch(`/api/offerings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isStandaloneBookable: value }),
+      })
+      if (!response.ok) throw new Error('Buchungsart konnte nicht gespeichert werden')
+      handleUpdated(await response.json())
+    } catch (error) {
+      setServices(previousServices)
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Änderung konnte nicht gespeichert werden'
+      )
+    }
+  }
+
   const handleDelete = async (id: string) => {
     if (!confirm('Bist du sicher, dass du diese Leistung löschen möchtest?')) return
 
@@ -379,6 +407,9 @@ export default function ServicesPage() {
                   }
                   onDelete={() => handleDelete(service.id)}
                   onToggleAddon={(value) => handleToggleAddon(service.id, value)}
+                  onToggleStandalone={(value) =>
+                    handleToggleStandalone(service.id, value)
+                  }
                   onUpdated={handleUpdated}
                 />
               ))}
