@@ -85,6 +85,14 @@ export function useCreateOffering() {
           capacity: validation.data.capacity ?? 1,
           color: validation.data.color || '#2563EB',
           image_url: validation.data.imageUrl ?? null,
+          available_as_addon: validation.data.availableAsAddon ?? false,
+          is_standalone_bookable: validation.data.isStandaloneBookable ?? true,
+          sort_order:
+            mockOfferings.filter(
+              offering =>
+                offering.location_id === resolvedLocationId &&
+                !!offering.available_as_addon === !!validation.data.availableAsAddon
+            ).length + 1,
           created_at: new Date().toISOString(),
         }
       }

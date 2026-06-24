@@ -18,6 +18,7 @@ const createOfferingSchema = z.object({
   color: z.string().optional(),
   imageUrl: z.string().nullable().optional(),
   availableAsAddon: z.boolean().optional(),
+  isStandaloneBookable: z.boolean().optional(),
 })
 
 /**
@@ -67,7 +68,11 @@ export async function GET(request: NextRequest) {
       query = query.eq('location_id', locationId)
     }
 
-    const { data: offerings, error } = await query.order('created_at', { ascending: false })
+    const { data: offerings, error } = await query
+      .order('available_as_addon', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
 
     if (error) throw error
     return NextResponse.json({ offerings: offerings || [] })
@@ -98,8 +103,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { organizationId, locationId, name, description, durationMinutes, capacity, priceCents, color, imageUrl, availableAsAddon } =
-      validationResult.data
+    const {
+      organizationId,
+      locationId,
+      name,
+      description,
+      durationMinutes,
+      capacity,
+      priceCents,
+      color,
+      imageUrl,
+      availableAsAddon,
+      isStandaloneBookable,
+    } = validationResult.data
     let normalizedImageUrl: string | null = null
     try {
       normalizedImageUrl = normalizeResourceImageUrl(imageUrl)
@@ -136,6 +152,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ungültiger Standort' }, { status: 400 })
     }
 
+    const addonGroup = availableAsAddon ?? false
+    const { data: lastOffering, error: orderError } = await client
+      .from('offerings')
+      .select('sort_order')
+      .eq('location_id', locationId)
+      .eq('available_as_addon', addonGroup)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle() as any
+
+    if (orderError) throw orderError
+
     const insertPayload: Record<string, unknown> = {
       organization_id: organizationId,
       location_id: locationId,
@@ -145,7 +173,9 @@ export async function POST(request: NextRequest) {
       capacity,
       price_cents: priceCents || null,
       color,
-      available_as_addon: availableAsAddon ?? false,
+      available_as_addon: addonGroup,
+      is_standalone_bookable: isStandaloneBookable ?? true,
+      sort_order: (lastOffering?.sort_order ?? 0) + 1,
     }
     if (normalizedImageUrl) {
       insertPayload.image_url = normalizedImageUrl

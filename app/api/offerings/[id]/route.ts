@@ -15,6 +15,7 @@ const updateOfferingSchema = z.object({
   imageUrl: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   availableAsAddon: z.boolean().optional(),
+  isStandaloneBookable: z.boolean().optional(),
 })
 
 function toOfferingUpdate(data: z.infer<typeof updateOfferingSchema>) {
@@ -28,6 +29,9 @@ function toOfferingUpdate(data: z.infer<typeof updateOfferingSchema>) {
   if (data.imageUrl !== undefined) updates.image_url = normalizeResourceImageUrl(data.imageUrl)
   if (data.isActive !== undefined) updates.is_active = data.isActive
   if (data.availableAsAddon !== undefined) updates.available_as_addon = data.availableAsAddon
+  if (data.isStandaloneBookable !== undefined) {
+    updates.is_standalone_bookable = data.isStandaloneBookable
+  }
   return updates
 }
 
@@ -115,7 +119,7 @@ export async function PATCH(
     // Get offering
     const { data: offering, error: getError } = await client
       .from('offerings')
-      .select('organization_id')
+      .select('organization_id, location_id, available_as_addon')
       .eq('id', id)
       .single() as any
 
@@ -133,6 +137,24 @@ export async function PATCH(
 
     if (!['owner', 'admin', 'manager'].includes(membership?.role || '')) {
       return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 403 })
+    }
+
+    if (
+      validationResult.data.availableAsAddon !== undefined &&
+      validationResult.data.availableAsAddon !== offering.available_as_addon
+    ) {
+      const { data: lastOffering, error: orderError } = await client
+        .from('offerings')
+        .select('sort_order')
+        .eq('location_id', offering.location_id)
+        .eq('available_as_addon', validationResult.data.availableAsAddon)
+        .neq('id', id)
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .maybeSingle() as any
+
+      if (orderError) throw orderError
+      updates.sort_order = (lastOffering?.sort_order ?? 0) + 1
     }
 
     // Update
