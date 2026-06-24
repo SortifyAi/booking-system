@@ -29,7 +29,7 @@ import {
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonGrid } from '@/components/ui/skeleton'
 import { isMockMode } from '@/lib/utils/mock'
-import { mockOfferings } from '@/lib/mock-data'
+import { mockLocations, mockOfferings } from '@/lib/mock-data'
 import { OfferingForm } from '@/components/OfferingForm'
 import {
   SortableOfferingCard,
@@ -93,7 +93,16 @@ export default function ServicesPage() {
       setLoading(true)
 
       if (isMockMode()) {
-        setServices(mockOfferings.map(mapOfferingToService))
+        setServices(
+          mockOfferings.map((offering) =>
+            mapOfferingToService({
+              ...offering,
+              location_name:
+                mockLocations.find((location) => location.id === offering.location_id)
+                  ?.name ?? 'Standort',
+            })
+          )
+        )
         return
       }
 
