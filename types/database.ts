@@ -133,10 +133,12 @@ export interface Database {
           id: string
           image_url: string | null
           is_active: boolean
+          is_standalone_bookable: boolean
           location_id: string
           name: string
           organization_id: string
           price_cents: number | null
+          sort_order: number
           updated_at: string
         }
         Insert: {
@@ -148,10 +150,12 @@ export interface Database {
           id?: string
           image_url?: string | null
           is_active?: boolean
+          is_standalone_bookable?: boolean
           location_id: string
           name: string
           organization_id: string
           price_cents?: number | null
+          sort_order?: number
           updated_at?: string
         }
         Update: {
@@ -163,10 +167,12 @@ export interface Database {
           id?: string
           image_url?: string | null
           is_active?: boolean
+          is_standalone_bookable?: boolean
           location_id?: string
           name?: string
           organization_id?: string
           price_cents?: number | null
+          sort_order?: number
           updated_at?: string
         }
         Relationships: [

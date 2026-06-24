@@ -45,6 +45,9 @@ export interface Offering {
   color: string | null
   imageUrl?: string | null
   image_url?: string | null
+  availableAsAddon?: boolean
+  isStandaloneBookable: boolean
+  sortOrder: number
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -61,6 +64,8 @@ export interface Resource {
   type: ResourceType
   capacity: number
   imageUrl?: string | null
+  availableAsAddon?: boolean
+  isStandaloneBookable?: boolean
   image_url?: string | null
   isActive: boolean
   createdAt: string
@@ -200,6 +205,8 @@ export interface UpdateOfferingRequest {
   color?: string
   imageUrl?: string | null
   isActive?: boolean
+  availableAsAddon?: boolean
+  isStandaloneBookable?: boolean
 }
 
 export interface CreateResourceRequest {
