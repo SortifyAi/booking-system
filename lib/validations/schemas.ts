@@ -55,6 +55,12 @@ export const UpdateOfferingSchema = z.object({
   availableAsAddon: z.boolean().optional(),
 })
 
+export const ReorderOfferingsSchema = z.object({
+  locationId: z.string().uuid('Ungültige Standort-ID'),
+  availableAsAddon: z.boolean(),
+  offeringIds: z.array(z.string().uuid('Ungültige Leistungs-ID')).min(1),
+})
+
 // ============================================================================
 // RESOURCE SCHEMAS
 // ============================================================================
