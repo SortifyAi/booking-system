@@ -54,6 +54,8 @@ export const demoOfferings = [
     organization_id: demoOrganization.id,
     is_active: true,
     available_as_addon: false,
+    is_standalone_bookable: true,
+    sort_order: 1,
   },
   {
     id: '33333333-3333-4333-8333-333333333332',
@@ -66,6 +68,8 @@ export const demoOfferings = [
     organization_id: demoOrganization.id,
     is_active: true,
     available_as_addon: false,
+    is_standalone_bookable: true,
+    sort_order: 2,
   },
   {
     id: '33333333-3333-4333-8333-333333333333',
@@ -78,6 +82,8 @@ export const demoOfferings = [
     organization_id: demoOrganization.id,
     is_active: true,
     available_as_addon: false,
+    is_standalone_bookable: true,
+    sort_order: 3,
   },
   // Add-ons (Zusatzleistungen): can be booked standalone or attached to any
   // service – they power the inline "Zusatzleistungen" picker in the flow.
@@ -92,6 +98,8 @@ export const demoOfferings = [
     organization_id: demoOrganization.id,
     is_active: true,
     available_as_addon: true,
+    is_standalone_bookable: false,
+    sort_order: 1,
   },
   {
     id: '33333333-3333-4333-8333-333333333335',
@@ -104,6 +112,8 @@ export const demoOfferings = [
     organization_id: demoOrganization.id,
     is_active: true,
     available_as_addon: true,
+    is_standalone_bookable: true,
+    sort_order: 2,
   },
   {
     id: '33333333-3333-4333-8333-333333333336',
@@ -116,6 +126,8 @@ export const demoOfferings = [
     organization_id: demoOrganization.id,
     is_active: true,
     available_as_addon: true,
+    is_standalone_bookable: true,
+    sort_order: 3,
   },
 ]
 

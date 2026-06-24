@@ -13,6 +13,7 @@ import {
   BOOKING_IN_PAST_ERROR,
   getShowPrices,
   getShowDuration,
+  getAllowMultiBooking,
   getRequiredCustomerFields,
   getPrivacyPolicyUrl,
   isFutureBookingStart,
@@ -27,6 +28,7 @@ import {
   type BookingSubmissionError,
 } from '@/components/PublicBookingSubmissionError'
 import { AvailabilityDatePicker, type DayInfo } from '@/components/AvailabilityDatePicker'
+import { standaloneOfferings } from '@/lib/offering-order.mjs'
 
 interface OrgInfo {
   id: string
@@ -53,6 +55,8 @@ interface Offering {
   color: string
   image_url?: string | null
   available_as_addon?: boolean
+  is_standalone_bookable?: boolean
+  sort_order?: number
 }
 
 interface CartItem {
@@ -153,6 +157,11 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null)
+  // Buchungsmodus bei Mehrfachauswahl: 'parallel' (mehrere Personen gleichzeitig,
+  // je Position ein Mitarbeiter) oder 'sequential' (nacheinander bei einem MA).
+  const [bookingMode, setBookingMode] = useState<'parallel' | 'sequential'>('parallel')
+  // Parallel: Wunsch-Mitarbeiter je Warenkorb-Position (uid → staffId | null=beliebig).
+  const [parallelStaff, setParallelStaff] = useState<Record<string, string | null>>({})
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
@@ -186,13 +195,18 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const requiredFields = getRequiredCustomerFields(org?.settings)
 
   // A cart line is one person/appointment: its service plus any add-ons.
+  const allowMulti = getAllowMultiBooking(org?.settings)
   const isMultiPerson = cartItems.length > 1
+  // Bei Mehrfachauswahl unterscheiden wir zwei Buchungsmodi.
+  const isSequential = isMultiPerson && bookingMode === 'sequential'
+  const isParallel = isMultiPerson && bookingMode === 'parallel'
   const itemDuration = (item: CartItem) =>
     item.offering.duration_minutes + item.addons.reduce((sum, a) => sum + (a.duration_minutes || 0), 0)
   const itemPriceCents = (item: CartItem) =>
     (item.offering.price_cents || 0) + item.addons.reduce((sum, a) => sum + (a.price_cents || 0), 0)
   const cartTotalCents = cartItems.reduce((sum, item) => sum + itemPriceCents(item), 0)
   const addonOfferings = offerings.filter((o) => o.available_as_addon)
+  const standaloneServiceOfferings = standaloneOfferings(offerings) as Offering[]
 
   useEffect(() => {
     fetchOrg()
@@ -215,7 +229,8 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
     if (cartItems.length > 0 && selectedLocation && selectedDate && step >= 4) {
       fetchAvailability()
     }
-  }, [cartItems, selectedLocation, selectedDate, selectedStaff, step])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems, selectedLocation, selectedDate, selectedStaff, bookingMode, parallelStaff, step])
 
   async function fetchOrg() {
     setLoading(true)
@@ -329,7 +344,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       // late in the evening for Europe/Berlin → wrong/missing slots).
       const dateStr = format(selectedDate, 'yyyy-MM-dd')
 
-      // Multiple people: slots where enough staff are simultaneously free.
+      // Mehrfachauswahl: cart-Endpoint, je nach Modus.
       if (isMultiPerson) {
         const durations = cartItems.map(itemDuration).join(',')
         const params = new URLSearchParams({
@@ -337,6 +352,14 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
           date: dateStr,
           durations,
         })
+        if (isSequential) {
+          // Nacheinander bei einem Mitarbeiter → zusammenhängender Block.
+          params.set('sequential', 'true')
+          if (selectedStaff) params.set('preferredStaffId', selectedStaff.id)
+        } else {
+          // Parallel: je Position fixierter Mitarbeiter (leer = beliebig).
+          params.set('staffIds', cartItems.map((it) => parallelStaff[it.uid] || '').join(','))
+        }
         const res = await fetch(`/api/availability/cart?${params}`)
         const data = await res.json()
         if (data.closed) setClosedReason(data.closedReason || 'Geschlossen')
@@ -408,11 +431,17 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   // stale and must be thrown away.
   const dayScopeKey = useMemo(() => {
     if (!selectedLocation || cartItems.length === 0) return ''
+    const durations = cartItems.map(itemDuration).join(',')
     if (isMultiPerson) {
-      return `${selectedLocation.id}|multi|${cartItems.map(itemDuration).join(',')}`
+      if (isSequential) {
+        return `${selectedLocation.id}|seq|${durations}|${selectedStaff?.id || 'any'}`
+      }
+      const staffIds = cartItems.map((it) => parallelStaff[it.uid] || '').join(',')
+      return `${selectedLocation.id}|par|${durations}|${staffIds}`
     }
     return `${selectedLocation.id}|single|${itemDuration(cartItems[0])}|${selectedStaff?.id || 'any'}`
-  }, [selectedLocation, cartItems, selectedStaff, isMultiPerson])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLocation, cartItems, selectedStaff, isMultiPerson, isSequential, bookingMode, parallelStaff])
 
   useEffect(() => {
     setDayInfo({})
@@ -425,7 +454,16 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
     if (!selectedLocation || cartItems.length === 0) return null
     const params = new URLSearchParams({ locationId: selectedLocation.id, from: fromStr, to: toStr })
     if (isMultiPerson) {
-      params.set('durations', cartItems.map(itemDuration).join(','))
+      if (isSequential) {
+        // Sequenziell = ein Mitarbeiter über die Gesamtdauer am Stück. Ohne
+        // offeringId zählt der Range-Endpoint alle Buchungen (Single-Person-Pfad).
+        const total = cartItems.reduce((sum, it) => sum + itemDuration(it), 0)
+        params.set('duration', String(total))
+        if (selectedStaff) params.set('preferredStaffId', selectedStaff.id)
+      } else {
+        params.set('durations', cartItems.map(itemDuration).join(','))
+        params.set('staffIds', cartItems.map((it) => parallelStaff[it.uid] || '').join(','))
+      }
     } else {
       params.set('duration', String(itemDuration(cartItems[0])))
       params.set('offeringId', cartItems[0].offering.id)
@@ -495,7 +533,11 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   }, [availableSlots, loading, closedReason, step, selectedDate])
 
   function addToCart(offering: Offering) {
-    setCartItems((prev) => [...prev, { uid: makeUid(), offering, addons: [] }])
+    setCartItems((prev) => {
+      // Mehrfachbuchung deaktiviert: nur eine Hauptleistung – Auswahl ersetzt sie.
+      if (!allowMulti) return [{ uid: makeUid(), offering, addons: [] }]
+      return [...prev, { uid: makeUid(), offering, addons: [] }]
+    })
   }
 
   function removeFromCart(uid: string) {
@@ -533,14 +575,13 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
     setSelectedSlot(null)
     setSelectedStaff(null)
     setAvailableSlots([])
-    if (cartItems.length === 1) {
-      setLoading(true)
-      fetchStaffMembers(selectedLocation!.id, cartItems[0].offering.id)
-      setStep(3)
-    } else {
-      setLoading(true)
-      setStep(4)
-    }
+    // Bei Mehrfachauswahl Modus + Pro-Position-Auswahl zurücksetzen.
+    setBookingMode('parallel')
+    setParallelStaff({})
+    setLoading(true)
+    // Step 3 zeigt für Einzel- wie Mehrfachauswahl die Mitarbeiterwahl.
+    fetchStaffMembers(selectedLocation!.id, cartItems[0].offering.id)
+    setStep(3)
   }
 
   async function handleSubmit() {
@@ -584,10 +625,17 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
       const body = isMultiPerson
         ? {
             locationId: selectedLocation.id,
+            mode: bookingMode,
             items: cartItems.map((item) => ({
               offeringId: item.offering.id,
               addonIds: item.addons.map((a) => a.id),
+              // Parallel: Wunsch-Mitarbeiter je Position (falls gewählt).
+              ...(isParallel && parallelStaff[item.uid]
+                ? { resourceId: parallelStaff[item.uid] }
+                : {}),
             })),
+            // Sequenziell: ein Wunsch-Mitarbeiter für alle Positionen.
+            ...(isSequential && selectedStaff ? { resourceId: selectedStaff.id } : {}),
             customerName,
             customerEmail,
             customerPhone: customerPhone || undefined,
@@ -779,13 +827,15 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
             </button>
             <h2 className="mb-1 text-xl font-bold text-slate-950 dark:text-white">2. Leistungen auswählen</h2>
             <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
-              Mehrere Leistungen für mehrere Personen? Einfach mehrfach hinzufügen.
+              {allowMulti
+                ? 'Mehrere Leistungen für mehrere Personen? Einfach mehrfach hinzufügen.'
+                : 'Wählen Sie Ihre Leistung – Zusatzleistungen können Sie optional ergänzen.'}
             </p>
             {loading ? (
               <div className="py-8 text-center text-slate-500">Laden...</div>
             ) : (
               <div className="space-y-3">
-                {offerings.map((offering) => {
+                {standaloneServiceOfferings.map((offering) => {
                   const linesForOffering = cartItems.filter((c) => c.offering.id === offering.id)
                   const inCart = linesForOffering.length
                   const hasMeta = showPrice || showDur
@@ -834,7 +884,12 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                             )}
                           </div>
                         </div>
-                        {inCart > 0 ? (
+                        {inCart > 0 && !allowMulti ? (
+                          // Mehrfachbuchung aus: Leistung ist ausgewählt (kein Mengen-Stepper).
+                          <span className="flex h-10 shrink-0 items-center gap-1.5 self-end rounded-xl border border-blue-500/80 bg-blue-50 px-3.5 text-sm font-bold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 sm:h-11">
+                            <Check className="h-4 w-4" /> Ausgewählt
+                          </span>
+                        ) : inCart > 0 ? (
                           <div className="flex h-11 shrink-0 items-center gap-1 rounded-xl border border-blue-500/80 bg-white/75 p-1 shadow-sm dark:bg-slate-950/25">
                             <button
                               onClick={() => decrementFromCart(offering.id)}
@@ -901,57 +956,142 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
           </div>
         )}
 
-        {/* Step 3: Staff (single person only) */}
+        {/* Step 3: Mitarbeiter (Einzel) bzw. Modus + Mitarbeiter (Mehrfach) */}
         {step === 3 && (
           <div className={wizardCardClass}>
             <button onClick={() => setStep(2)} className={backButtonClass}>
               <ChevronLeft className="w-4 h-4" /> Zurück
             </button>
             <h2 className="mb-5 text-xl font-bold text-slate-950 dark:text-white">3. Mitarbeiter auswählen</h2>
+
+            {/* Mehrfachauswahl: Wie soll gebucht werden? */}
+            {isMultiPerson && (
+              <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => { setBookingMode('sequential'); setSelectedSlot(null); setAvailableSlots([]) }}
+                  className={cn(selectionCardBaseClass, bookingMode === 'sequential' ? selectionCardActiveClass : selectionCardIdleClass)}
+                >
+                  <div className="font-semibold text-slate-950 dark:text-white">Nacheinander</div>
+                  <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                    Alle Leistungen bei einem Mitarbeiter, direkt hintereinander.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setBookingMode('parallel'); setSelectedStaff(null); setSelectedSlot(null); setAvailableSlots([]) }}
+                  className={cn(selectionCardBaseClass, bookingMode === 'parallel' ? selectionCardActiveClass : selectionCardIdleClass)}
+                >
+                  <div className="font-semibold text-slate-950 dark:text-white">Gleichzeitig</div>
+                  <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                    Mehrere Personen zur selben Zeit, je eigener Mitarbeiter.
+                  </div>
+                </button>
+              </div>
+            )}
+
             {loading ? (
               <div className="py-8 text-center text-slate-500">Laden...</div>
             ) : (
-              <div className="space-y-3">
-                <button
-                  onClick={() => { setSelectedStaff(null); setLoading(true); setStep(4) }}
-                  className={cn(selectionCardBaseClass, selectionCardIdleClass)}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-                      <User className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <div className="font-semibold text-slate-950 dark:text-white">Keine Präferenz</div>
-                      <div className="text-sm text-slate-500 dark:text-slate-400">Beliebiger Mitarbeiter</div>
-                    </div>
-                  </div>
-                </button>
-                {staffMembers.map((staff) => (
-                  <button
-                    key={staff.id}
-                    onClick={() => { setSelectedStaff(staff); setLoading(true); setStep(4) }}
-                    className={cn(
-                      selectionCardBaseClass,
-                      'p-3 sm:p-4',
-                      selectedStaff?.id === staff.id ? selectionCardActiveClass : selectionCardIdleClass
+              <>
+                {/* Einzelbuchung ODER „Nacheinander": ein Mitarbeiter für alles. */}
+                {(!isMultiPerson || isSequential) && (
+                  <div className="space-y-3">
+                    {isSequential && (
+                      <p className="rounded-xl border border-blue-100 bg-blue-50/80 p-3 text-sm font-medium text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                        Dieser Mitarbeiter übernimmt alle {cartItems.length} Leistungen direkt nacheinander.
+                      </p>
                     )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <ResourceAvatar
-                        name={staff.name}
-                        imageUrl={staff.imageUrl}
-                        className="h-14 w-14"
-                      />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-slate-950 dark:text-white">{staff.name}</div>
-                        <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                          Persönliche Auswahl
+                    <button
+                      onClick={() => { setSelectedStaff(null); setLoading(true); setStep(4) }}
+                      className={cn(selectionCardBaseClass, selectionCardIdleClass)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+                          <User className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <div className="font-semibold text-slate-950 dark:text-white">Keine Präferenz</div>
+                          <div className="text-sm text-slate-500 dark:text-slate-400">Beliebiger Mitarbeiter</div>
                         </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    </button>
+                    {staffMembers.map((staff) => (
+                      <button
+                        key={staff.id}
+                        onClick={() => { setSelectedStaff(staff); setLoading(true); setStep(4) }}
+                        className={cn(
+                          selectionCardBaseClass,
+                          'p-3 sm:p-4',
+                          selectedStaff?.id === staff.id ? selectionCardActiveClass : selectionCardIdleClass
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <ResourceAvatar
+                            name={staff.name}
+                            imageUrl={staff.imageUrl}
+                            className="h-14 w-14"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-950 dark:text-white">{staff.name}</div>
+                            <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                              Persönliche Auswahl
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* „Gleichzeitig": Mitarbeiter je Position wählen. */}
+                {isParallel && (
+                  <div className="space-y-4">
+                    {cartItems.map((item, idx) => (
+                      <div
+                        key={item.uid}
+                        className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700"
+                      >
+                        <div className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          <span className="text-slate-400">Person {idx + 1}: </span>
+                          {item.offering.name}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {[{ id: null, name: 'Beliebig' }, ...staffMembers].map((staff) => {
+                            const active = (parallelStaff[item.uid] ?? null) === staff.id
+                            return (
+                              <button
+                                key={staff.id ?? 'any'}
+                                type="button"
+                                onClick={() => {
+                                  setParallelStaff((prev) => ({ ...prev, [item.uid]: staff.id }))
+                                  setSelectedSlot(null)
+                                }}
+                                aria-pressed={active}
+                                className={cn(
+                                  'rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-200',
+                                  active
+                                    ? 'border-blue-600 bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-sm shadow-blue-600/20'
+                                    : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-blue-950/30'
+                                )}
+                              >
+                                {staff.name}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <Button
+                      onClick={() => { setLoading(true); setSelectedSlot(null); setStep(4) }}
+                      className="w-full flex items-center justify-center gap-2"
+                    >
+                      Weiter zur Terminwahl
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -959,13 +1099,18 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
         {/* Step 4: Date & Time */}
         {step === 4 && (
           <div className={wizardCardClass}>
-            <button onClick={() => setStep(isMultiPerson ? 2 : 3)} className={backButtonClass}>
+            <button onClick={() => setStep(3)} className={backButtonClass}>
               <ChevronLeft className="w-4 h-4" /> Zurück
             </button>
             <h2 className="mb-5 text-xl font-bold text-slate-950 dark:text-white">4. Datum & Uhrzeit</h2>
-            {isMultiPerson && (
+            {isSequential && (
               <p className="mb-4 rounded-xl border border-blue-100 bg-blue-50/80 p-3 text-sm font-medium text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-                Für {cartItems.length} Personen – es werden nur Zeiten angezeigt, an denen genügend Mitarbeiter gleichzeitig frei sind.
+                {cartItems.length} Leistungen nacheinander – es werden nur Startzeiten angezeigt, an denen ein Mitarbeiter durchgehend frei ist.
+              </p>
+            )}
+            {isParallel && (
+              <p className="mb-4 rounded-xl border border-blue-100 bg-blue-50/80 p-3 text-sm font-medium text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                Für {cartItems.length} Personen – es werden nur Zeiten angezeigt, an denen die gewählten Mitarbeiter gleichzeitig frei sind.
               </p>
             )}
             <div className="mb-4">
@@ -1154,10 +1299,24 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                       </div>
                     ))}
                   </div>
-                  {isMultiPerson ? (
+                  {isSequential ? (
                     <p className="text-slate-500 dark:text-slate-400">
                       <User className="mr-1 inline h-4 w-4" />
-                      Mitarbeiter werden automatisch zugewiesen
+                      Nacheinander bei{' '}
+                      {selectedStaff ? selectedStaff.name : 'einem Mitarbeiter (wird automatisch zugewiesen)'}
+                    </p>
+                  ) : isParallel ? (
+                    <p className="text-slate-500 dark:text-slate-400">
+                      <User className="mr-1 inline h-4 w-4" />
+                      {cartItems.every((it) => !parallelStaff[it.uid])
+                        ? 'Mitarbeiter werden automatisch zugewiesen'
+                        : cartItems
+                            .map((it, idx) => {
+                              const sid = parallelStaff[it.uid]
+                              const name = sid ? staffMembers.find((s) => s.id === sid)?.name : null
+                              return `Person ${idx + 1}: ${name || 'beliebig'}`
+                            })
+                            .join(' · ')}
                     </p>
                   ) : (
                     <div className="flex items-center gap-3 rounded-xl bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-700">

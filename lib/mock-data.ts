@@ -62,6 +62,9 @@ export const mockOfferings = [
     image_url: null,
     location_id: 'loc-berlin',
     organization_id: 'org-1',
+    available_as_addon: false,
+    is_standalone_bookable: true,
+    sort_order: 1,
     created_at: addDays(now, -50).toISOString(),
   },
   {
@@ -75,6 +78,9 @@ export const mockOfferings = [
     image_url: null,
     location_id: 'loc-hamburg',
     organization_id: 'org-1',
+    available_as_addon: false,
+    is_standalone_bookable: true,
+    sort_order: 1,
     created_at: addDays(now, -45).toISOString(),
   },
   {
@@ -88,6 +94,9 @@ export const mockOfferings = [
     image_url: null,
     location_id: 'loc-munich',
     organization_id: 'org-1',
+    available_as_addon: false,
+    is_standalone_bookable: true,
+    sort_order: 1,
     created_at: addDays(now, -40).toISOString(),
   },
 ]

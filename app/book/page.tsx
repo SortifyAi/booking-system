@@ -21,6 +21,7 @@ import {
   PublicBookingSubmissionError,
   type BookingSubmissionError,
 } from '@/components/PublicBookingSubmissionError'
+import { standaloneOfferings } from '@/lib/offering-order.mjs'
 
 interface Location {
   id: string
@@ -38,6 +39,9 @@ interface Offering {
   price_cents: number
   color: string
   image_url?: string | null
+  available_as_addon?: boolean
+  is_standalone_bookable?: boolean
+  sort_order?: number
 }
 
 interface StaffMember {
@@ -81,6 +85,7 @@ export default function BookPage() {
   const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
   const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState(false)
+  const standaloneServiceOfferings = standaloneOfferings(offerings) as Offering[]
 
   useEffect(() => {
     setSubmissionError(null)
@@ -478,7 +483,7 @@ export default function BookPage() {
               <div className="text-center py-8 text-gray-500">Laden...</div>
             ) : (
               <div className="space-y-3">
-                {offerings.map((offering) => (
+                {standaloneServiceOfferings.map((offering) => (
                   <button
                     key={offering.id}
                     onClick={() => { setSelectedOffering(offering); setStep(3) }}
