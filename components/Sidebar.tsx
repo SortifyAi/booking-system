@@ -15,6 +15,7 @@ import {
   CalendarOff,
   Award,
   ShieldBan,
+  Play,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -139,7 +140,17 @@ export function Sidebar({ onClose }: SidebarProps) {
         })}
       </nav>
 
-      <div className="border-t border-gray-200 p-3 dark:border-slate-800">
+      <div className="border-t border-gray-200 p-3 space-y-0.5 dark:border-slate-800">
+        <a
+          href="/book/salon-nordlicht"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onClose}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors dark:text-slate-300 dark:hover:bg-slate-800/70"
+        >
+          <Play className="h-[18px] w-[18px] text-gray-500 dark:text-slate-400" />
+          Demo-Buchung
+        </a>
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors dark:text-slate-300 dark:hover:bg-slate-800/70"
