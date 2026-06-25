@@ -16,9 +16,11 @@ import {
   getAllowMultiBooking,
   getRequiredCustomerFields,
   getPrivacyPolicyUrl,
+  getPublicBookingTheme,
   isFutureBookingStart,
   withPastSlotsUnavailable,
 } from '@/lib/booking-policy'
+import { setDocumentThemeOverride } from '@/lib/store/theme'
 import { getDemoStaffMembers, isDemoLocationId } from '@/lib/public-demo'
 import { DEFAULT_TIMEZONE, formatTimeInTimeZone } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
@@ -187,6 +189,13 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
   const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
   const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState(false)
+
+  const publicBookingTheme = getPublicBookingTheme(org?.settings)
+
+  useEffect(() => {
+    setDocumentThemeOverride(publicBookingTheme)
+    return () => setDocumentThemeOverride(null)
+  }, [publicBookingTheme])
 
   useEffect(() => {
     setSubmissionError(null)
@@ -912,7 +921,7 @@ export default function OrgBookPage({ params }: { params: Promise<{ slug: string
                         ) : (
                           <button
                             onClick={() => addToCart(offering)}
-                            className="h-10 self-end px-3.5 text-sm sm:h-11 sm:px-4 flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-b from-blue-500 to-blue-600 font-bold text-white shadow-sm shadow-blue-600/20 transition hover:to-blue-700 active:scale-[0.98]"
+                            className="h-10 self-end px-3.5 text-sm sm:h-11 sm:px-4 flex shrink-0 items-center gap-1.5 rounded-xl bg-[#20c4c1] font-bold text-[#062d38] shadow-sm shadow-[#20c4c1]/25 transition hover:bg-[#45d3d0] hover:shadow-md active:scale-[0.98]"
                           >
                             <Plus className="h-4 w-4" />
                             Hinzufügen

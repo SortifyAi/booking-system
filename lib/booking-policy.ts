@@ -20,7 +20,19 @@ type OrgSettings = {
   privacyPolicyUrl?: unknown
   avvAcceptedAt?: unknown
   avvVersion?: unknown
+  publicBookingTheme?: unknown
 } | null
+
+export type PublicBookingTheme = 'dark' | 'light'
+export const DEFAULT_PUBLIC_BOOKING_THEME: PublicBookingTheme = 'dark'
+
+/** Public booking pages use one organisation-wide theme on every device. */
+export function getPublicBookingTheme(orgSettings: unknown): PublicBookingTheme {
+  const value = (orgSettings as OrgSettings)?.publicBookingTheme
+  return value === 'light' || value === 'dark'
+    ? value
+    : DEFAULT_PUBLIC_BOOKING_THEME
+}
 
 /**
  * Fallback privacy policy shown to customers when an organisation has not set

@@ -17,6 +17,11 @@ assert.equal(
   'function',
   'calendar block visibility helper should exist',
 );
+assert.equal(
+  typeof calendarResponsive.isCalendarHourBoundary,
+  'function',
+  'calendar hour-boundary helper should exist',
+);
 
 const openingHours = [
   { day: 1, open: '09:00', close: '18:00', closed: false },
@@ -64,6 +69,11 @@ assert.deepEqual(
     { minuteOfDay: 660, hour: 11, minute: 0, label: '11:00' },
   ],
 );
+
+assert.equal(calendarResponsive.isCalendarHourBoundary(540, 30), false);
+assert.equal(calendarResponsive.isCalendarHourBoundary(570, 30), true);
+assert.equal(calendarResponsive.isCalendarHourBoundary(600, 30), false);
+assert.equal(calendarResponsive.isCalendarHourBoundary(630, 30), true);
 
 const blocks = [
   {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 
 async function main() {
-  const policy: any = await import('./booking-policy')
+  const policy: any = await import('./booking-policy.ts')
 
   assert.equal(typeof policy.isFutureBookingStart, 'function')
   assert.equal(typeof policy.withPastSlotsUnavailable, 'function')
@@ -12,6 +12,29 @@ async function main() {
   assert.equal(policy.getAllowReschedule({}), true, 'reschedule allowed when unset')
   assert.equal(policy.getAllowReschedule({ allowReschedule: false }), false, 'admin can disable reschedule')
   assert.equal(policy.getAllowReschedule({ allowReschedule: true }), true, 'explicitly enabled stays on')
+
+  assert.equal(policy.getPublicBookingTheme(null), 'dark', 'public booking theme defaults to dark')
+  assert.equal(policy.getPublicBookingTheme({}), 'dark', 'unset public booking theme defaults to dark')
+  assert.equal(
+    policy.getPublicBookingTheme({ publicBookingTheme: 'dark' }),
+    'dark',
+    'explicit dark public booking theme stays dark'
+  )
+  assert.equal(
+    policy.getPublicBookingTheme({ publicBookingTheme: 'light' }),
+    'light',
+    'explicit light public booking theme stays light'
+  )
+  assert.equal(
+    policy.getPublicBookingTheme({ publicBookingTheme: 'system' }),
+    'dark',
+    'unsupported system public booking theme falls back to dark'
+  )
+  assert.equal(
+    policy.getPublicBookingTheme({ publicBookingTheme: 1 }),
+    'dark',
+    'non-string public booking theme falls back to dark'
+  )
 
   const now = new Date('2026-06-14T10:00:00.000Z')
 

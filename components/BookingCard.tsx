@@ -8,7 +8,7 @@ interface BookingCardProps {
   locationName: string;
   startTime: string;
   endTime: string;
-  status?: 'confirmed' | 'pending' | 'cancelled';
+  status?: 'confirmed' | 'pending' | 'cancelled' | 'completed' | 'no_show';
   guestName?: string;
   guestPhone?: string | null;
   guestEmail?: string | null;
@@ -20,6 +20,8 @@ const statusLabels: Record<string, string> = {
   confirmed: 'Bestätigt',
   pending: 'Ausstehend',
   cancelled: 'Storniert',
+  completed: 'Abgeschlossen',
+  no_show: 'Nicht erschienen',
 };
 
 export function BookingCard({
@@ -34,10 +36,12 @@ export function BookingCard({
   onEdit,
   onDelete,
 }: BookingCardProps) {
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     confirmed: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30',
     pending: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-300 dark:border-yellow-500/30',
     cancelled: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30',
+    completed: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30',
+    no_show: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30',
   };
 
   const startDate = new Date(startTime);
@@ -56,7 +60,7 @@ export function BookingCard({
               {locationName}
             </p>
           </div>
-          <div className={`rounded px-2 py-1 text-xs font-medium border whitespace-nowrap flex-shrink-0 ${statusColors[status]}`}>
+          <div className={`rounded px-2 py-1 text-xs font-medium border whitespace-nowrap flex-shrink-0 ${statusColors[status] || statusColors.pending}`}>
             {statusLabels[status] || status}
           </div>
         </div>

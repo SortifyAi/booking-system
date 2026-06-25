@@ -22,6 +22,7 @@ import {
 import {
   filterCalendarBlocksForColumn,
   getCalendarTimeSlots,
+  isCalendarHourBoundary,
 } from '@/lib/calendar-responsive';
 import { useCalendarDrag, type DropTarget } from '@/lib/hooks/use-calendar-drag';
 
@@ -316,7 +317,7 @@ export function DayCalendar({
                 <div
                   key={slot.minuteOfDay}
                   className={`border-b px-1.5 py-1.5 text-right sm:px-2 ${
-                    slot.minute === 0
+                    isCalendarHourBoundary(slot.minuteOfDay)
                       ? 'border-gray-200 dark:border-slate-700'
                       : 'border-gray-100 dark:border-slate-800'
                   }`}
@@ -347,7 +348,7 @@ export function DayCalendar({
                       key={`${staff.id || 'all'}-${slot.minuteOfDay}`}
                       type="button"
                       className={`block w-full cursor-pointer border-b text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600 ${
-                        slot.minute === 0
+                        isCalendarHourBoundary(slot.minuteOfDay)
                           ? 'border-gray-200 dark:border-slate-700'
                           : 'border-gray-100 dark:border-slate-800'
                       }`}

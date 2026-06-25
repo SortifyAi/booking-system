@@ -407,6 +407,8 @@ export default function BookingsPage() {
             <option value="confirmed">Bestätigt</option>
             <option value="pending">Ausstehend</option>
             <option value="cancelled">Storniert</option>
+            <option value="completed">Abgeschlossen</option>
+            <option value="no_show">Nicht erschienen</option>
           </select>
         </div>
       </div>
@@ -640,6 +642,8 @@ export default function BookingsPage() {
                 <option value="pending">Ausstehend</option>
                 <option value="confirmed">Bestätigt</option>
                 <option value="cancelled">Storniert</option>
+                <option value="completed">Abgeschlossen</option>
+                <option value="no_show">Nicht erschienen</option>
               </select>
             </div>
 

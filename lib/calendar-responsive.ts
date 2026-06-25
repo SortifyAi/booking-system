@@ -113,6 +113,13 @@ export function getCalendarTimeSlots(
     });
 }
 
+export function isCalendarHourBoundary(
+  minuteOfDay: number,
+  slotMinutes = 30,
+) {
+  return (minuteOfDay + slotMinutes) % 60 === 0;
+}
+
 export function filterCalendarBlocksForColumn<T extends CalendarBlockWithStaff>(
   blocks: T[],
   options: {

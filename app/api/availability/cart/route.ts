@@ -70,10 +70,10 @@ export async function GET(request: NextRequest) {
     const sequential = searchParams.get('sequential') === 'true'
     const preferredStaffId = searchParams.get('preferredStaffId') || null
     // Index-aligned zu durations; leere Einträge bedeuten "beliebiger Mitarbeiter".
-    const staffIds = (searchParams.get('staffIds') || '')
+    const requestedStaffIds = (searchParams.get('staffIds') || '')
       .split(',')
       .map((s) => s.trim() || null)
-    const fixedStaffByPosition = durations.map((_, i) => staffIds[i] ?? null)
+    const fixedStaffByPosition = durations.map((_, i) => requestedStaffIds[i] ?? null)
 
     // Sequenziell: ein Mitarbeiter, ein zusammenhängender Block über die Gesamtdauer.
     const totalDuration = durations.reduce((sum, d) => sum + d, 0)
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ type: 'cart', date, slots: [] })
     }
 
-    const staffIds = staffMembers.map((s: any) => s.id)
+    const activeStaffIds = staffMembers.map((s: any) => s.id)
     const dateObj = parse(date, 'yyyy-MM-dd', new Date())
     const dayOfWeek = dateObj.getDay()
 
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
       .eq('location_id', locationId)
       .eq('day_of_week', dayOfWeek)
       .eq('is_active', true)
-      .in('resource_id', staffIds) as any
+      .in('resource_id', activeStaffIds) as any
 
     if (schedError) throw schedError
 
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
       .in('status', ['pending', 'confirmed'])
       .gte('start_time', startOfDay.toISOString())
       .lte('end_time', endOfDay.toISOString())
-      .in('resource_id', staffIds) as any
+      .in('resource_id', activeStaffIds) as any
 
     if (bookError) throw bookError
 

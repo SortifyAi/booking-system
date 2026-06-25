@@ -11,7 +11,21 @@ import { useRouter } from 'next/navigation';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockUser } from '@/lib/mock-data';
-import { getCancellationCutoffHours, getAllowReschedule, getShowPrices, getShowDuration, getAllowMultiBooking, getRequiredCustomerFields, getPrivacyPolicyUrl, getAvvAcceptance, CURRENT_AVV_VERSION, type RequiredCustomerFields, type AvvAcceptance } from '@/lib/booking-policy';
+import {
+  getCancellationCutoffHours,
+  getAllowReschedule,
+  getShowPrices,
+  getShowDuration,
+  getAllowMultiBooking,
+  getRequiredCustomerFields,
+  getPrivacyPolicyUrl,
+  getAvvAcceptance,
+  getPublicBookingTheme,
+  CURRENT_AVV_VERSION,
+  type RequiredCustomerFields,
+  type AvvAcceptance,
+  type PublicBookingTheme,
+} from '@/lib/booking-policy';
 import Link from 'next/link';
 
 interface UserSettings {
@@ -36,6 +50,8 @@ export default function SettingsPage() {
   const [showPrices, setShowPrices] = useState(true);
   const [showDuration, setShowDuration] = useState(true);
   const [allowMultiBooking, setAllowMultiBooking] = useState(true);
+  const [publicBookingTheme, setPublicBookingTheme] = useState<PublicBookingTheme>('dark');
+  const [savingPublicBookingTheme, setSavingPublicBookingTheme] = useState(false);
   const [requiredFields, setRequiredFields] = useState<RequiredCustomerFields>({ phone: false, notes: false });
   const [privacyUrl, setPrivacyUrl] = useState('');
   const [savingPrivacyUrl, setSavingPrivacyUrl] = useState(false);
@@ -63,6 +79,7 @@ export default function SettingsPage() {
         setShowPrices(getShowPrices(org.settings));
         setShowDuration(getShowDuration(org.settings));
         setAllowMultiBooking(getAllowMultiBooking(org.settings));
+        setPublicBookingTheme(getPublicBookingTheme(org.settings));
         setRequiredFields(getRequiredCustomerFields(org.settings));
         const storedPrivacyUrl = (org.settings as Record<string, unknown> | null)?.privacyPolicyUrl;
         setPrivacyUrl(typeof storedPrivacyUrl === 'string' ? storedPrivacyUrl : '');
@@ -210,6 +227,22 @@ export default function SettingsPage() {
       if (key === 'showPrices') setShowPrices(!value);
       else setShowDuration(!value);
       toast.error(error?.message || 'Speichern fehlgeschlagen');
+    }
+  };
+
+  const savePublicBookingTheme = async (value: PublicBookingTheme) => {
+    if (!organization || value === publicBookingTheme) return;
+    const previous = publicBookingTheme;
+    setPublicBookingTheme(value);
+    setSavingPublicBookingTheme(true);
+    try {
+      await saveOrgSettings({ publicBookingTheme: value });
+      toast.success('Farbschema der Buchungsseite gespeichert');
+    } catch (error: any) {
+      setPublicBookingTheme(previous);
+      toast.error(error?.message || 'Speichern fehlgeschlagen');
+    } finally {
+      setSavingPublicBookingTheme(false);
     }
   };
 
@@ -552,6 +585,36 @@ export default function SettingsPage() {
           <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
             Steuere, welche Informationen deine Kunden bei der Online-Buchung sehen.
           </p>
+
+          <div className="mb-5 border-b border-gray-100 pb-5 dark:border-slate-800">
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100">
+              Farbschema der Buchungsseite
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              Nur für die öffentliche Kundenseite. Dein persönlicher Admin-Modus bleibt unverändert.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {([
+                { value: 'dark', label: 'Dunkel' },
+                { value: 'light', label: 'Hell' },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={savingPublicBookingTheme}
+                  aria-pressed={publicBookingTheme === option.value}
+                  onClick={() => savePublicBookingTheme(option.value)}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    publicBookingTheme === option.value
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/20 dark:text-blue-200'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="space-y-3">
             {([

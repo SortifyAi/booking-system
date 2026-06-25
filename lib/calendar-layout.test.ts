@@ -42,7 +42,31 @@ assert.deepEqual(separateLayout.get('booking-c'), { column: 0, columns: 1 });
 assert.deepEqual(separateLayout.get('booking-d'), { column: 0, columns: 1 });
 
 const style = getBookingTimeStyle(sameMorning[0], 7 * 60, 72, 42);
-assert.deepEqual(style, { top: 150, height: 62 });
+assert.deepEqual(style, { top: 146, height: 68 });
+
+const halfHourStyle = getBookingTimeStyle(
+  {
+    id: 'booking-half-hour',
+    start_time: '2026-05-25T11:30:00',
+    end_time: '2026-05-25T12:00:00',
+  },
+  9 * 60,
+  72,
+  40,
+);
+assert.deepEqual(halfHourStyle, { top: 182, height: 32 });
+
+const followingHalfHourStyle = getBookingTimeStyle(
+  {
+    id: 'booking-following-half-hour',
+    start_time: '2026-05-25T12:00:00',
+    end_time: '2026-05-25T12:30:00',
+  },
+  9 * 60,
+  72,
+  40,
+);
+assert.deepEqual(followingHalfHourStyle, { top: 218, height: 32 });
 
 const blockStyle = getBlockStyleForDay(
   {

@@ -160,15 +160,16 @@ export function getBookingTimeStyle(
   booking: CalendarLayoutBooking,
   startMinute: number,
   pixelsPerHour: number,
-  minHeight: number,
+  _minHeight: number,
 ): CalendarTimeStyle {
   const startTime = new Date(booking.start_time);
   const endTime = new Date(booking.end_time);
   const startOffsetMinutes = startTime.getHours() * 60 + startTime.getMinutes() - startMinute;
   const durationMinutes = Math.max(15, (endTime.getTime() - startTime.getTime()) / 60000);
+  const durationHeight = (durationMinutes / 60) * pixelsPerHour;
 
   return {
-    top: Math.max(0, (startOffsetMinutes / 60) * pixelsPerHour + 6),
-    height: Math.max(minHeight, (durationMinutes / 60) * pixelsPerHour - 10),
+    top: Math.max(0, (startOffsetMinutes / 60) * pixelsPerHour + 2),
+    height: Math.max(8, durationHeight - 4),
   };
 }

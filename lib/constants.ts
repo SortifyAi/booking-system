@@ -11,7 +11,7 @@ export const STATUS_COLORS: Record<string, { bg: string; text: string; border: s
   pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
   cancelled: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
   completed: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  'no-show': { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' },
+  no_show: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
 };
 
 /**
