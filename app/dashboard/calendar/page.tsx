@@ -39,6 +39,14 @@ interface Location {
   name: string;
   organization_id?: string;
   timezone?: string | null;
+  settings?: {
+    openingHours?: Array<{
+      day: number;
+      open: string;
+      close: string;
+      closed?: boolean;
+    }>;
+  } | null;
 }
 
 interface Offering {
@@ -117,6 +125,7 @@ export default function CalendarPage() {
   const [quickCreateData, setQuickCreateData] = useState<{
     date: Date;
     hour: number;
+    minute: number;
     staffId?: string;
   } | null>(null);
   const [newBooking, setNewBooking] = useState({
@@ -150,7 +159,13 @@ export default function CalendarPage() {
         }));
 
         setStaffMembers(mockCalendarStaff);
-        setLocations(mockLocations.map(({ id, name, organization_id }) => ({ id, name, organization_id })));
+        setLocations(mockLocations.map(({ id, name, organization_id, timezone, settings }) => ({
+          id,
+          name,
+          organization_id,
+          timezone,
+          settings,
+        })));
         setOfferings(mockOfferings.map(({ id, name, duration_minutes, location_id }) => ({
           id,
           name,
@@ -171,7 +186,7 @@ export default function CalendarPage() {
           .order('name'),
         supabase
           .from('locations')
-          .select('id, name, organization_id, timezone')
+          .select('id, name, organization_id, timezone, settings')
           .order('name'),
         supabase
           .from('offerings')
@@ -229,9 +244,9 @@ export default function CalendarPage() {
         return !blockStaffId || blockStaffId === selectedStaff;
       });
 
-  const handleQuickCreate = (date: Date, hour: number, staffId?: string) => {
+  const handleQuickCreate = (date: Date, hour: number, minute: number, staffId?: string) => {
     const selectedDate = new Date(date);
-    selectedDate.setHours(hour, 0, 0, 0);
+    selectedDate.setHours(hour, minute, 0, 0);
 
     const defaultOffering = offerings[0];
     const defaultDuration = defaultOffering?.duration_minutes || 60;
@@ -250,7 +265,7 @@ export default function CalendarPage() {
     const defaultStaffId = staffId
       || (selectedStaff !== 'all' ? selectedStaff : firstAvailableStaff?.id || staffMembers[0]?.id || '');
 
-    setQuickCreateData({ date: selectedDate, hour, staffId: defaultStaffId });
+    setQuickCreateData({ date: selectedDate, hour, minute, staffId: defaultStaffId });
     setCreateMode('booking');
     setNewBooking({
       customer_name: '',
@@ -807,8 +822,7 @@ export default function CalendarPage() {
         setCurrentDate={setCurrentDate}
         bookings={filteredBookings}
         blocks={filteredBlocks}
-        startHour={7}
-        endHour={20}
+        openingHours={locations.flatMap((location) => location.settings?.openingHours || [])}
         selectedStaff={selectedStaff}
         onStaffChange={setSelectedStaff}
         staffMembers={staffMembers}
@@ -1156,7 +1170,7 @@ export default function CalendarPage() {
             <DialogDescription>
               {quickCreateData && (
                 <>
-                  {createMode === 'block' ? 'Zeit blockieren am' : 'Termin am'} {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:00 Uhr
+                  {createMode === 'block' ? 'Zeit blockieren am' : 'Termin am'} {quickCreateData.date.toLocaleDateString('de-DE')} um {String(quickCreateData.hour).padStart(2, '0')}:{String(quickCreateData.minute).padStart(2, '0')} Uhr
                   {quickCreateData.staffId && (
                     <> bei {staffMembers.find((staff) => staff.id === quickCreateData.staffId)?.name}</>
                   )}

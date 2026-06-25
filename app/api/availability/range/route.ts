@@ -33,6 +33,7 @@ import { zonedTimeToUtc } from '@/lib/timezone'
 import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
 import { isFutureBookingStart } from '@/lib/booking-policy'
 import { blockBlocksSlot } from '@/lib/block-availability'
+import { assignStaffToPositions } from '@/lib/staff-assignment'
 import { demoLocations, isDemoLocationId } from '@/lib/public-demo'
 
 // Tage, die der Kalender pro Anfrage rendert (ein Monat + etwas Puffer).
@@ -86,6 +87,13 @@ export async function GET(request: NextRequest) {
 
     const { locationId, from, to, offeringId, preferredStaffId, duration, durations } =
       validationResult.data
+
+    // Parallel: optionale, je Position fixierte Mitarbeiter (index-aligned zu
+    // durations; leere Einträge = beliebig). Spiegelt /availability/cart.
+    const staffIdsParam = (searchParams.get('staffIds') || '')
+      .split(',')
+      .map((s) => s.trim() || null)
+    const fixedStaffByPosition = (durations || []).map((_, i) => staffIdsParam[i] ?? null)
 
     const fromDate = parse(from, 'yyyy-MM-dd', new Date())
     const toDate = parse(to, 'yyyy-MM-dd', new Date())
@@ -226,7 +234,6 @@ export async function GET(request: NextRequest) {
     if (blockError) throw blockError
 
     const distinctDurations = isMulti ? Array.from(new Set(durations)) : [duration!]
-    const durationsDesc = isMulti ? [...durations].sort((a, b) => b - a) : [duration!]
     const minDuration = Math.min(...distinctDurations)
 
     // Arbeitsfenster (UTC) eines Mitarbeiters an einem Tag.
@@ -303,6 +310,7 @@ export async function GET(request: NextRequest) {
         windows: windowsForStaff(s.id, dateStr, dayOfWeek),
         busy: busyByStaff.get(s.id) || [],
       }))
+      const staffOrder = staffState.map((s: any) => s.id)
 
       // Kandidaten-Startzeiten: 30-Minuten-Raster über alle Arbeitsfenster.
       const candidateStarts = new Map<number, Date>()
@@ -331,26 +339,17 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        // Sammelbuchung: Hall-Bedingung – Position k (absteigend sortiert) braucht
-        // mind. k gleichzeitig freie Mitarbeiter für ihre Dauer.
-        const freeCount = new Map<number, number>()
-        for (const d of distinctDurations) {
-          freeCount.set(
-            d,
-            staffState.reduce(
-              (n: number, st: any) => n + (isFree(st.windows, st.busy, slotStart, d) ? 1 : 0),
-              0
-            )
-          )
+        // Sammelbuchung (parallel): distinkte Zuweisung je Position – fixierte
+        // Wunsch-Mitarbeiter werden respektiert (bipartites Matching).
+        const positions = durations!.map((d, i) => ({
+          duration: d,
+          fixedStaffId: fixedStaffByPosition[i],
+        }))
+        const isFreeById = (staffId: string, durationMin: number) => {
+          const st = staffState.find((s: any) => s.id === staffId)
+          return st ? isFree(st.windows, st.busy, slotStart, durationMin) : false
         }
-        let feasible = true
-        for (let k = 0; k < durationsDesc.length; k++) {
-          if ((freeCount.get(durationsDesc[k]) ?? 0) < k + 1) {
-            feasible = false
-            break
-          }
-        }
-        if (feasible) return true
+        if (assignStaffToPositions(positions, staffOrder, isFreeById)) return true
       }
 
       return false

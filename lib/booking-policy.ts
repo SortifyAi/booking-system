@@ -16,6 +16,7 @@ type OrgSettings = {
   showPrices?: unknown
   showDuration?: unknown
   requiredCustomerFields?: unknown
+  allowMultiBooking?: unknown
   privacyPolicyUrl?: unknown
   avvAcceptedAt?: unknown
   avvVersion?: unknown
@@ -112,6 +113,17 @@ export function getShowPrices(orgSettings: unknown): boolean {
 /** Whether service duration should be shown to customers on the booking page. Default: true. */
 export function getShowDuration(orgSettings: unknown): boolean {
   const value = (orgSettings as OrgSettings)?.showDuration
+  return value === false ? false : true
+}
+
+/**
+ * Whether customers may book several services at once (multiple people in
+ * parallel, or several services in a row with one staff member). Default: true.
+ * When off, the public booking page only allows a single main service plus
+ * its add-ons, and the group-booking endpoint rejects multi-item requests.
+ */
+export function getAllowMultiBooking(orgSettings: unknown): boolean {
+  const value = (orgSettings as OrgSettings)?.allowMultiBooking
   return value === false ? false : true
 }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  getBlockStyleForDay,
   getBookingTimeStyle,
   getMaximumParallelBookings,
   layoutOverlappingBookings,
@@ -40,8 +41,20 @@ const separateLayout = layoutOverlappingBookings(separateMorning);
 assert.deepEqual(separateLayout.get('booking-c'), { column: 0, columns: 1 });
 assert.deepEqual(separateLayout.get('booking-d'), { column: 0, columns: 1 });
 
-const style = getBookingTimeStyle(sameMorning[0], 7, 72, 42);
+const style = getBookingTimeStyle(sameMorning[0], 7 * 60, 72, 42);
 assert.deepEqual(style, { top: 150, height: 62 });
+
+const blockStyle = getBlockStyleForDay(
+  {
+    start_time: '2026-05-25T08:00:00',
+    end_time: '2026-05-25T10:30:00',
+  },
+  new Date('2026-05-25T12:00:00'),
+  9 * 60 + 30,
+  18 * 60,
+  72,
+);
+assert.deepEqual(blockStyle, { top: 0, height: 72 });
 
 const busyMorning = [
   {

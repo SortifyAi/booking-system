@@ -53,6 +53,14 @@ export async function GET(
   const booking: any = rows[0]
   const isGroup = rows.length > 1
 
+  // Gesamtende der (Sammel-)Buchung: spätestes Geschwister-Ende. Bei sequenziellen
+  // Buchungen liegen die Positionen hintereinander, daher reicht das Ende der
+  // ersten Zeile nicht aus.
+  const groupEndTime = rows.reduce(
+    (acc: string, r: any) => (r.end_time && new Date(r.end_time) > new Date(acc) ? r.end_time : acc),
+    booking.end_time
+  )
+
   const cutoffHours = getCancellationCutoffHours(booking.organizations?.settings)
   const isCancelled = booking.status === 'cancelled'
   // Both cancelling and rescheduling are gated by the same cutoff window.
@@ -84,7 +92,7 @@ export async function GET(
     booking: {
       customerName: booking.customer_name,
       startTime: booking.start_time,
-      endTime: booking.end_time,
+      endTime: groupEndTime,
       status: booking.status,
       serviceName: booking.offerings?.name ?? null,
       priceCents: booking.offerings?.price_cents ?? null,

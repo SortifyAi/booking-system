@@ -19,6 +19,10 @@ import {
   getMaximumParallelBookings,
   layoutOverlappingBookings,
 } from '@/lib/calendar-layout';
+import {
+  filterCalendarBlocksForColumn,
+  getCalendarTimeSlots,
+} from '@/lib/calendar-responsive';
 import { useCalendarDrag, type DropTarget } from '@/lib/hooks/use-calendar-drag';
 
 interface Booking {
@@ -55,11 +59,11 @@ interface DayCalendarProps {
   currentDate: Date;
   bookings: Booking[];
   blocks?: Block[];
-  startHour?: number;
-  endHour?: number;
+  startMinute?: number;
+  endMinute?: number;
   selectedStaff?: string;
   staffMembers?: Staff[];
-  onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
+  onTimeSlotClick?: (date: Date, hour: number, minute: number, staffId?: string) => void;
   onBookingMove?: (
     bookingId: string,
     newStart: Date,
@@ -76,14 +80,15 @@ const staffColors: Record<string, string> = {
   'staff-sophie': '#10B981',
 };
 
-const slotHeight = 76;
+const pixelsPerHour = 76;
+const slotHeight = pixelsPerHour / 2;
 
 export function DayCalendar({
   currentDate,
   bookings,
   blocks = [],
-  startHour = 7,
-  endHour = 20,
+  startMinute = 7 * 60,
+  endMinute = 20 * 60,
   selectedStaff = 'all',
   staffMembers = [],
   onTimeSlotClick,
@@ -91,15 +96,15 @@ export function DayCalendar({
   onBookingClick,
   onBlockClick,
 }: DayCalendarProps) {
-  const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
-  const bodyHeight = (endHour - startHour) * slotHeight;
+  const timeSlots = getCalendarTimeSlots(startMinute, endMinute);
+  const bodyHeight = ((endMinute - startMinute) / 60) * pixelsPerHour;
 
   const resolvePoint = (clientX: number, clientY: number) => {
     const element = document.elementFromPoint(clientX, clientY);
     const column = element?.closest('[data-cal-staff]') as HTMLElement | null;
     if (!column || column.dataset.calStaff == null) return null;
     const rect = column.getBoundingClientRect();
-    const pointerMinutes = ((clientY - rect.top) / slotHeight) * 60;
+    const pointerMinutes = ((clientY - rect.top) / pixelsPerHour) * 60;
     return { columnKey: column.dataset.calStaff, pointerMinutes };
   };
 
@@ -110,7 +115,8 @@ export function DayCalendar({
     const bookingStart = new Date(booking.start_time);
     const durationMs = new Date(booking.end_time).getTime() - bookingStart.getTime();
     const newStart = new Date(currentDate);
-    newStart.setHours(startHour, 0, 0, 0);
+    newStart.setHours(0, 0, 0, 0);
+    newStart.setMinutes(startMinute);
     newStart.setMinutes(newStart.getMinutes() + target.minutesFromStart);
     const newEnd = new Date(newStart.getTime() + durationMs);
     const newStaffId = target.columnKey || undefined;
@@ -122,7 +128,8 @@ export function DayCalendar({
   };
 
   const { dragState, startDrag, draggingId } = useCalendarDrag({
-    dayMinutes: (endHour - startHour) * 60,
+    dayMinutes: endMinute - startMinute,
+    snapMinutes: 30,
     resolvePoint,
     onCommit: handleCommit,
     onClick: (id) => onBookingClick?.(id),
@@ -136,7 +143,10 @@ export function DayCalendar({
   const now = new Date();
   const currentHour = getHours(now);
   const currentMinute = getMinutes(now);
-  const showNowLine = isToday(currentDate) && currentHour >= startHour && currentHour < endHour;
+  const currentMinuteOfDay = currentHour * 60 + currentMinute;
+  const showNowLine = isToday(currentDate)
+    && currentMinuteOfDay >= startMinute
+    && currentMinuteOfDay < endMinute;
 
   const visibleStaff = selectedStaff === 'all'
     ? staffMembers
@@ -159,10 +169,9 @@ export function DayCalendar({
   });
 
   const getStaffBlocks = (staffId: string) => {
-    if (!staffId) return dayBlocks;
-    return dayBlocks.filter((block) => {
-      const blockStaffId = block.resource_id || block.staff_id;
-      return !blockStaffId || blockStaffId === staffId;
+    return filterCalendarBlocksForColumn(dayBlocks, {
+      selectedStaff,
+      staffId: staffId || undefined,
     });
   };
 
@@ -176,19 +185,33 @@ export function DayCalendar({
   );
   const gridTemplateColumns = `56px ${staffColumnWidths.map((width) => `minmax(${width}px, 1fr)`).join(' ')}`;
 
-  const handleSlotClick = (hour: number, staffId?: string) => {
+  const handleSlotClick = (hour: number, minute: number, staffId?: string) => {
     if (onTimeSlotClick) {
-      onTimeSlotClick(currentDate, hour, staffId || undefined);
+      onTimeSlotClick(currentDate, hour, minute, staffId || undefined);
     }
   };
 
   const handleCreateButtonClick = () => {
-    const defaultHour = isToday(currentDate)
-      ? Math.min(Math.max(currentHour + 1, startHour), endHour - 1)
-      : startHour;
+    const defaultMinuteOfDay = isToday(currentDate)
+      ? Math.min(
+          Math.max(Math.ceil((currentMinuteOfDay + 30) / 30) * 30, startMinute),
+          endMinute - 30,
+        )
+      : startMinute;
     const defaultStaffId = selectedStaff !== 'all' ? selectedStaff : staffColumns[0]?.id || undefined;
 
-    handleSlotClick(defaultHour, defaultStaffId);
+    handleSlotClick(
+      Math.floor(defaultMinuteOfDay / 60),
+      defaultMinuteOfDay % 60,
+      defaultStaffId,
+    );
+  };
+
+  const formatMinuteOfDay = (minuteOfDay: number) => {
+    const normalizedMinute = Math.max(0, minuteOfDay);
+    const hour = Math.floor(normalizedMinute / 60);
+    const minute = normalizedMinute % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   };
 
   const getBookingStaff = (booking: Booking) => {
@@ -289,14 +312,18 @@ export function DayCalendar({
 
           <div className="relative grid" style={{ gridTemplateColumns }}>
             <div className="border-r border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-800">
-              {hours.map((hour) => (
+              {timeSlots.map((slot) => (
                 <div
-                  key={hour}
-                  className="border-b border-gray-200 px-1.5 py-3 text-right dark:border-slate-800 sm:px-2"
+                  key={slot.minuteOfDay}
+                  className={`border-b px-1.5 py-1.5 text-right sm:px-2 ${
+                    slot.minute === 0
+                      ? 'border-gray-200 dark:border-slate-700'
+                      : 'border-gray-100 dark:border-slate-800'
+                  }`}
                   style={{ height: `${slotHeight}px` }}
                 >
                   <p className="text-xs font-semibold text-gray-600 dark:text-slate-400 sm:text-sm">
-                    {String(hour).padStart(2, '0')}:00
+                    {slot.label}
                   </p>
                 </div>
               ))}
@@ -315,20 +342,36 @@ export function DayCalendar({
                   className="relative border-r border-gray-200 last:border-r-0 dark:border-slate-800"
                   style={{ height: `${bodyHeight}px` }}
                 >
-                  {hours.map((hour) => (
+                  {timeSlots.map((slot) => (
                     <button
-                      key={`${staff.id || 'all'}-${hour}`}
+                      key={`${staff.id || 'all'}-${slot.minuteOfDay}`}
                       type="button"
-                      className="block w-full cursor-pointer border-b border-gray-100 text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:border-slate-800 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600"
+                      className={`block w-full cursor-pointer border-b text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600 ${
+                        slot.minute === 0
+                          ? 'border-gray-200 dark:border-slate-700'
+                          : 'border-gray-100 dark:border-slate-800'
+                      }`}
                       style={{ height: `${slotHeight}px` }}
-                      onClick={() => handleSlotClick(hour, staff.id || undefined)}
-                      title="Klicken um Termin zu erstellen"
+                      onClick={() =>
+                        handleSlotClick(
+                          slot.hour,
+                          slot.minute,
+                          staff.id || undefined,
+                        )
+                      }
+                      title={`Termin um ${slot.label} erstellen`}
                     />
                   ))}
 
                   {/* Blocks (gray striped bands behind bookings) */}
                   {getStaffBlocks(staff.id).map((block) => {
-                    const style = getBlockStyleForDay(block, currentDate, startHour, endHour, slotHeight);
+                    const style = getBlockStyleForDay(
+                      block,
+                      currentDate,
+                      startMinute,
+                      endMinute,
+                      pixelsPerHour,
+                    );
                     if (!style) return null;
                     const label = block.reason || blockTypeLabels[block.type] || 'Blockiert';
 
@@ -361,13 +404,11 @@ export function DayCalendar({
                     <div
                       className="pointer-events-none absolute inset-x-1 z-20 flex items-start rounded-md border-2 border-dashed border-blue-500 bg-blue-500/20 px-2 py-1 text-xs font-semibold text-blue-700 dark:text-blue-200"
                       style={{
-                        top: `${(dragState.target.minutesFromStart / 60) * slotHeight + 6}px`,
-                        height: `${Math.max(48, (dragState.durationMinutes / 60) * slotHeight - 10)}px`,
+                        top: `${(dragState.target.minutesFromStart / 60) * pixelsPerHour + 6}px`,
+                        height: `${Math.max(48, (dragState.durationMinutes / 60) * pixelsPerHour - 10)}px`,
                       }}
                     >
-                      {String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}
-                      :
-                      {String(dragState.target.minutesFromStart % 60).padStart(2, '0')}
+                      {formatMinuteOfDay(startMinute + dragState.target.minutesFromStart)}
                     </div>
                   )}
 
@@ -378,10 +419,17 @@ export function DayCalendar({
                     const gap = 5;
                     const width = `calc((100% - ${(position.columns - 1) * gap}px) / ${position.columns})`;
                     const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
-                    const timeStyle = getBookingTimeStyle(booking, startHour, slotHeight, 48);
+                    const timeStyle = getBookingTimeStyle(
+                      booking,
+                      startMinute,
+                      pixelsPerHour,
+                      48,
+                    );
                     const isCompactBooking = position.columns >= 3 || timeStyle.height < 58;
                     const bookingStart = new Date(booking.start_time);
-                    const startMinutes = (bookingStart.getHours() - startHour) * 60 + bookingStart.getMinutes();
+                    const startMinutes = bookingStart.getHours() * 60
+                      + bookingStart.getMinutes()
+                      - startMinute;
                     const durationMinutes = Math.max(
                       15,
                       (new Date(booking.end_time).getTime() - bookingStart.getTime()) / 60000,
@@ -441,7 +489,7 @@ export function DayCalendar({
               <div
                 className="pointer-events-none absolute left-[72px] right-0 z-20 h-0.5 bg-red-500 shadow-md"
                 style={{
-                  top: `${((currentHour - startHour) + currentMinute / 60) * slotHeight}px`,
+                  top: `${((currentMinuteOfDay - startMinute) / 60) * pixelsPerHour}px`,
                 }}
               >
                 <div className="absolute -left-2 -top-1.5 h-4 w-4 rounded-full border-2 border-white bg-red-500 dark:border-slate-900" />
@@ -465,7 +513,7 @@ export function DayCalendar({
           style={{ left: dragState.pointerX, top: dragState.pointerY }}
         >
           {dragState.target
-            ? `${String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}:${String(dragState.target.minutesFromStart % 60).padStart(2, '0')}`
+            ? formatMinuteOfDay(startMinute + dragState.target.minutesFromStart)
             : dragState.title}
         </div>
       )}

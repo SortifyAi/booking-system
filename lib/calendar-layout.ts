@@ -113,21 +113,31 @@ export function layoutOverlappingBookings(
 
 /**
  * Position style for a block (vacation/break/etc.) on a single day column.
- * The block is clamped to the visible [startHour, endHour] window of that day,
+ * The block is clamped to the visible [startMinute, endMinute] window of that day,
  * so multi-day or out-of-hours blocks render as a band covering the visible part.
  * Returns null when the block does not intersect the visible window at all.
  */
 export function getBlockStyleForDay(
   block: { start_time: string; end_time: string },
   day: Date,
-  startHour: number,
-  endHour: number,
-  slotHeight: number,
+  startMinute: number,
+  endMinute: number,
+  pixelsPerHour: number,
 ): CalendarTimeStyle | null {
   const windowStart = new Date(day);
-  windowStart.setHours(startHour, 0, 0, 0);
+  windowStart.setHours(
+    Math.floor(startMinute / 60),
+    startMinute % 60,
+    0,
+    0,
+  );
   const windowEnd = new Date(day);
-  windowEnd.setHours(endHour, 0, 0, 0);
+  windowEnd.setHours(
+    Math.floor(endMinute / 60),
+    endMinute % 60,
+    0,
+    0,
+  );
 
   const blockStart = new Date(block.start_time);
   const blockEnd = new Date(block.end_time);
@@ -141,24 +151,24 @@ export function getBlockStyleForDay(
   const durationMinutes = (visibleEnd.getTime() - visibleStart.getTime()) / 60000;
 
   return {
-    top: (startOffsetMinutes / 60) * slotHeight,
-    height: Math.max(8, (durationMinutes / 60) * slotHeight),
+    top: (startOffsetMinutes / 60) * pixelsPerHour,
+    height: Math.max(8, (durationMinutes / 60) * pixelsPerHour),
   };
 }
 
 export function getBookingTimeStyle(
   booking: CalendarLayoutBooking,
-  startHour: number,
-  slotHeight: number,
+  startMinute: number,
+  pixelsPerHour: number,
   minHeight: number,
 ): CalendarTimeStyle {
   const startTime = new Date(booking.start_time);
   const endTime = new Date(booking.end_time);
-  const startOffsetMinutes = (startTime.getHours() - startHour) * 60 + startTime.getMinutes();
+  const startOffsetMinutes = startTime.getHours() * 60 + startTime.getMinutes() - startMinute;
   const durationMinutes = Math.max(15, (endTime.getTime() - startTime.getTime()) / 60000);
 
   return {
-    top: Math.max(0, (startOffsetMinutes / 60) * slotHeight + 6),
-    height: Math.max(minHeight, (durationMinutes / 60) * slotHeight - 10),
+    top: Math.max(0, (startOffsetMinutes / 60) * pixelsPerHour + 6),
+    height: Math.max(minHeight, (durationMinutes / 60) * pixelsPerHour - 10),
   };
 }

@@ -5,12 +5,12 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none dark:focus-visible:ring-offset-slate-950',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20c4c1] focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none dark:focus-visible:ring-offset-slate-950',
   {
     variants: {
       variant: {
         default:
-          'bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-sm shadow-blue-600/20 hover:from-blue-500 hover:to-blue-700 hover:shadow-md hover:shadow-blue-600/25 dark:from-blue-500 dark:to-blue-600 dark:hover:from-blue-400 dark:hover:to-blue-500',
+          'bg-[#20c4c1] text-[#062d38] shadow-sm shadow-[#20c4c1]/25 hover:bg-[#45d3d0] hover:shadow-md hover:shadow-[#20c4c1]/30',
         destructive:
           'bg-gradient-to-b from-red-500 to-red-600 text-white shadow-sm shadow-red-600/20 hover:from-red-500 hover:to-red-700 dark:from-red-500 dark:to-red-600 dark:hover:from-red-400 dark:hover:to-red-500',
         outline:

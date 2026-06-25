@@ -7,14 +7,14 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 0 0% 3.6%;
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 179 72.2% 44.7%;
     --secondary: 187.3 100% 43.1%;
   }
 
   .dark {
     --background: 222 47% 11%;
     --foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 179 72.2% 44.7%;
     --secondary: 187.3 100% 43.1%;
   }
 

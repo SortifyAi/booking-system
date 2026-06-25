@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { isMockMode } from '@/lib/utils/mock';
 import { mockUser } from '@/lib/mock-data';
-import { getCancellationCutoffHours, getAllowReschedule, getShowPrices, getShowDuration, getRequiredCustomerFields, getPrivacyPolicyUrl, getAvvAcceptance, CURRENT_AVV_VERSION, type RequiredCustomerFields, type AvvAcceptance } from '@/lib/booking-policy';
+import { getCancellationCutoffHours, getAllowReschedule, getShowPrices, getShowDuration, getAllowMultiBooking, getRequiredCustomerFields, getPrivacyPolicyUrl, getAvvAcceptance, CURRENT_AVV_VERSION, type RequiredCustomerFields, type AvvAcceptance } from '@/lib/booking-policy';
 import Link from 'next/link';
 
 interface UserSettings {
@@ -35,6 +35,7 @@ export default function SettingsPage() {
   const [allowReschedule, setAllowReschedule] = useState(true);
   const [showPrices, setShowPrices] = useState(true);
   const [showDuration, setShowDuration] = useState(true);
+  const [allowMultiBooking, setAllowMultiBooking] = useState(true);
   const [requiredFields, setRequiredFields] = useState<RequiredCustomerFields>({ phone: false, notes: false });
   const [privacyUrl, setPrivacyUrl] = useState('');
   const [savingPrivacyUrl, setSavingPrivacyUrl] = useState(false);
@@ -61,6 +62,7 @@ export default function SettingsPage() {
         setAllowReschedule(getAllowReschedule(org.settings));
         setShowPrices(getShowPrices(org.settings));
         setShowDuration(getShowDuration(org.settings));
+        setAllowMultiBooking(getAllowMultiBooking(org.settings));
         setRequiredFields(getRequiredCustomerFields(org.settings));
         const storedPrivacyUrl = (org.settings as Record<string, unknown> | null)?.privacyPolicyUrl;
         setPrivacyUrl(typeof storedPrivacyUrl === 'string' ? storedPrivacyUrl : '');
@@ -207,6 +209,17 @@ export default function SettingsPage() {
       // revert on failure
       if (key === 'showPrices') setShowPrices(!value);
       else setShowDuration(!value);
+      toast.error(error?.message || 'Speichern fehlgeschlagen');
+    }
+  };
+
+  const toggleMultiBooking = async (value: boolean) => {
+    if (!organization) return;
+    setAllowMultiBooking(value);
+    try {
+      await saveOrgSettings({ allowMultiBooking: value });
+    } catch (error: any) {
+      setAllowMultiBooking(!value);
       toast.error(error?.message || 'Speichern fehlgeschlagen');
     }
   };
@@ -555,6 +568,13 @@ export default function SettingsPage() {
                 description: 'Kunden sehen die Dauer der Leistung in Minuten',
                 value: showDuration,
                 set: (v: boolean) => toggleBookingVisibility('showDuration', v),
+              },
+              {
+                key: 'allowMultiBooking' as const,
+                label: 'Mehrfachbuchung erlauben',
+                description: 'Kunden können mehrere Leistungen auf einmal buchen (mehrere Personen gleichzeitig oder mehrere Leistungen nacheinander). Aus: nur eine Hauptleistung + Zusatzleistungen.',
+                value: allowMultiBooking,
+                set: (v: boolean) => toggleMultiBooking(v),
               },
             ] as const).map((item) => (
               <div key={item.key} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-slate-800 last:border-0">

@@ -16,9 +16,11 @@ import { Button } from '@/components/ui/button';
 import { WeekCalendar } from './WeekCalendar';
 import { DayCalendar } from './DayCalendar';
 import {
+  getCalendarTimeRange,
   getCalendarNavigationStep,
   getResponsiveWeekDayCount,
   getVisibleWeekDays,
+  type CalendarOpeningHours,
 } from '@/lib/calendar-responsive';
 
 interface Booking {
@@ -59,12 +61,13 @@ interface CalendarContainerProps {
   setCurrentDate: (date: Date) => void;
   bookings: Booking[];
   blocks?: Block[];
+  openingHours?: CalendarOpeningHours[];
   startHour?: number;
   endHour?: number;
   selectedStaff?: string;
   onStaffChange?: (staffId: string) => void;
   staffMembers?: Staff[];
-  onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
+  onTimeSlotClick?: (date: Date, hour: number, minute: number, staffId?: string) => void;
   onBookingMove?: (
     bookingId: string,
     newStart: Date,
@@ -84,6 +87,7 @@ export function CalendarContainer({
   setCurrentDate,
   bookings,
   blocks = [],
+  openingHours = [],
   startHour = 7,
   endHour = 20,
   selectedStaff = 'all',
@@ -99,6 +103,15 @@ export function CalendarContainer({
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
   const visibleWeekDays = getVisibleWeekDays(weekDays, currentDate, visibleWeekDaysCount);
+  const visibleCalendarDays = view === 'week' ? visibleWeekDays : [currentDate];
+  const { startMinute, endMinute } = getCalendarTimeRange(
+    openingHours,
+    visibleCalendarDays,
+    {
+      startMinute: startHour * 60,
+      endMinute: endHour * 60,
+    },
+  );
   const navigationStep = getCalendarNavigationStep(
     view,
     view === 'week' ? visibleWeekDaysCount : 1,
@@ -317,8 +330,8 @@ export function CalendarContainer({
             currentDate={currentDate}
             bookings={bookings}
             blocks={blocks}
-            startHour={startHour}
-            endHour={endHour}
+            startMinute={startMinute}
+            endMinute={endMinute}
             selectedStaff={selectedStaff}
             staffMembers={staffMembers}
             onTimeSlotClick={onTimeSlotClick}
@@ -331,8 +344,8 @@ export function CalendarContainer({
             currentDate={currentDate}
             bookings={bookings}
             blocks={blocks}
-            startHour={startHour}
-            endHour={endHour}
+            startMinute={startMinute}
+            endMinute={endMinute}
             selectedStaff={selectedStaff}
             staffMembers={staffMembers}
             onTimeSlotClick={onTimeSlotClick}

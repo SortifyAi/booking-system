@@ -7,11 +7,23 @@
  * Dauer freien Mitarbeiter. Es werden nur Slots angeboten, an denen genug
  * Mitarbeiter gleichzeitig frei sind, um alle Positionen distinct zuzuweisen.
  *
+ * Zwei Modi:
+ * - PARALLEL (Default): jede Position startet gleichzeitig und braucht einen
+ *   eigenen freien Mitarbeiter. Optional kann je Position ein Mitarbeiter
+ *   fixiert werden (`staffIds`).
+ * - SEQUENZIELL (`sequential=true`): alle Positionen nacheinander bei EINEM
+ *   Mitarbeiter; gesucht wird ein zusammenhängender freier Block = Summe der
+ *   Dauern. Optional auf `preferredStaffId` eingeschränkt.
+ *
  * Query params:
  * - locationId: required (uuid)
  * - date: required (YYYY-MM-DD)
  * - durations: required, kommagetrennte Minuten je Position, z.B. "45,45,120"
  *              (inkl. Zusatzleistungen)
+ * - staffIds: optional (parallel), kommagetrennt & index-aligned zu durations;
+ *             leere Einträge = beliebiger Mitarbeiter, z.B. "<uuid>,,<uuid>"
+ * - sequential: optional "true" – sequenzieller Modus (siehe oben)
+ * - preferredStaffId: optional (sequenziell) – nur dieser Mitarbeiter
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/server/db'
@@ -21,6 +33,7 @@ import { BUSINESS_HOURS } from '@/lib/constants'
 import { zonedTimeToUtc } from '@/lib/timezone'
 import { resolveClosedReason, getExceptionWindow } from '@/lib/holidays'
 import { isFutureBookingStart } from '@/lib/booking-policy'
+import { assignStaffToPositions } from '@/lib/staff-assignment'
 import { buildDemoCartAvailability, isDemoLocationId } from '@/lib/public-demo'
 
 const cartAvailabilitySchema = z.object({
@@ -54,8 +67,21 @@ export async function GET(request: NextRequest) {
     const { locationId, date, durations } = validationResult.data
     const now = new Date()
 
+    const sequential = searchParams.get('sequential') === 'true'
+    const preferredStaffId = searchParams.get('preferredStaffId') || null
+    // Index-aligned zu durations; leere Einträge bedeuten "beliebiger Mitarbeiter".
+    const staffIds = (searchParams.get('staffIds') || '')
+      .split(',')
+      .map((s) => s.trim() || null)
+    const fixedStaffByPosition = durations.map((_, i) => staffIds[i] ?? null)
+
+    // Sequenziell: ein Mitarbeiter, ein zusammenhängender Block über die Gesamtdauer.
+    const totalDuration = durations.reduce((sum, d) => sum + d, 0)
+
     if (isDemoLocationId(locationId)) {
-      return NextResponse.json(buildDemoCartAvailability({ date, durations, now }))
+      // Sequenziell entspricht einer einzelnen Position über die Gesamtdauer.
+      const demoDurations = sequential ? [totalDuration] : durations
+      return NextResponse.json(buildDemoCartAvailability({ date, durations: demoDurations, now }))
     }
 
     const client = getSupabaseAdmin()
@@ -187,45 +213,65 @@ export async function GET(request: NextRequest) {
       return true
     }
 
-    // Candidate start times: union of every staff's 30-min grid within their windows.
-    const minDuration = Math.min(...durations)
+    const staffById = new Map<string, any>(staffState.map((s: any) => [s.id, s]))
+    const nameById = new Map<string, string>(staffMembers.map((s: any) => [s.id, s.name]))
+
+    // Im sequenziellen Modus muss der ganze Block (Summe) am Stück passen; das
+    // bestimmt auch das Kandidaten-Raster. Parallel reicht die kürzeste Position.
+    const gridMinDuration = sequential ? totalDuration : Math.min(...durations)
     const candidateStarts = new Map<number, Date>()
     for (const state of staffState) {
       for (const w of state.windows) {
         let t = new Date(w.start)
-        while (t.getTime() + minDuration * 60000 <= w.end.getTime()) {
+        while (t.getTime() + gridMinDuration * 60000 <= w.end.getTime()) {
           candidateStarts.set(t.getTime(), new Date(t))
           t = addMinutes(t, 30)
         }
       }
     }
 
-    const durationsDesc = [...durations].sort((a, b) => b - a)
-    const distinctDurations = Array.from(new Set(durations))
-    const maxDuration = durationsDesc[0]
+    const maxDuration = Math.max(...durations)
+    const positions = durations.map((d, i) => ({ duration: d, fixedStaffId: fixedStaffByPosition[i] }))
+    const staffOrder = staffState.map((s: any) => s.id)
 
-    const slots: { startTime: string; endTime: string; available: boolean }[] = []
+    const slots: {
+      startTime: string
+      endTime: string
+      available: boolean
+      staffId?: string
+      staffName?: string
+    }[] = []
 
     for (const slotStart of Array.from(candidateStarts.values()).sort((a, b) => a.getTime() - b.getTime())) {
       if (!isFutureBookingStart(slotStart, now)) continue
 
-      // Free-staff count per distinct duration at this start.
-      const freeCount = new Map<number, number>()
-      for (const d of distinctDurations) {
-        freeCount.set(d, staffState.reduce((n: number, s: any) => n + (isStaffFree(s, slotStart, d) ? 1 : 0), 0))
-      }
-
-      // Nested-set Hall condition: durations sorted desc, position k (1-based)
-      // needs at least k staff free for its duration to allow distinct assignment.
-      let feasible = true
-      for (let k = 0; k < durationsDesc.length; k++) {
-        if ((freeCount.get(durationsDesc[k]) ?? 0) < k + 1) {
-          feasible = false
-          break
+      if (sequential) {
+        // Ein Mitarbeiter, der den gesamten Block am Stück frei hat. Optional auf
+        // den Wunsch-Mitarbeiter eingeschränkt.
+        const candidates = preferredStaffId
+          ? staffState.filter((s: any) => s.id === preferredStaffId)
+          : staffState
+        const match = candidates.find((s: any) => isStaffFree(s, slotStart, totalDuration))
+        if (match) {
+          slots.push({
+            startTime: slotStart.toISOString(),
+            endTime: addMinutes(slotStart, totalDuration).toISOString(),
+            available: true,
+            staffId: match.id,
+            staffName: nameById.get(match.id),
+          })
         }
+        continue
       }
 
-      if (feasible) {
+      // Parallel: distinkte Zuweisung je Position (fixierte Mitarbeiter werden
+      // respektiert), per bipartitem Matching.
+      const isFree = (staffId: string, duration: number) => {
+        const state = staffById.get(staffId)
+        return state ? isStaffFree(state, slotStart, duration) : false
+      }
+      const assignment = assignStaffToPositions(positions, staffOrder, isFree)
+      if (assignment) {
         slots.push({
           startTime: slotStart.toISOString(),
           endTime: addMinutes(slotStart, maxDuration).toISOString(),

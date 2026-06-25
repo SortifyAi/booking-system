@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { generateManageToken, buildManageUrl } from '@/lib/booking-token'
-import { BOOKING_IN_PAST_ERROR, isFutureBookingStart } from '@/lib/booking-policy'
+import { BOOKING_IN_PAST_ERROR, isFutureBookingStart, getAllowMultiBooking } from '@/lib/booking-policy'
+import { assignStaffToPositions } from '@/lib/staff-assignment'
 import { sendBookingConfirmation } from '@/lib/email'
 import { resolveClosedReason } from '@/lib/holidays'
 import { utcToZonedDateStr } from '@/lib/timezone'
@@ -39,9 +40,14 @@ const createGroupBookingSchema = z.object({
       z.object({
         offeringId: z.string().uuid(),
         addonIds: z.array(z.string().uuid()).optional(),
+        resourceId: z.string().uuid().optional(), // Wunsch-Mitarbeiter (parallel, je Position)
       })
     )
     .min(1),
+  // 'parallel' (Default): gleichzeitig, je Position eigener Mitarbeiter.
+  // 'sequential': nacheinander beim selben Mitarbeiter.
+  mode: z.enum(['parallel', 'sequential']).optional(),
+  resourceId: z.string().uuid().optional(), // Wunsch-Mitarbeiter (sequenziell, gilt für alle)
   customerName: z.string().min(1),
   customerEmail: z.string().trim().email(),
   customerPhone: z.string().optional(),
@@ -523,6 +529,8 @@ async function createGroupBooking(body: unknown) {
     organizationId,
     locationId,
     items,
+    mode = 'parallel',
+    resourceId: sequentialResourceId,
     customerName,
     customerEmail,
     customerPhone,
@@ -530,6 +538,8 @@ async function createGroupBooking(body: unknown) {
     notes,
     privacyNoticeAccepted,
   } = validationResult.data
+
+  const isSequential = mode === 'sequential'
 
   if (!isFutureBookingStart(startTime)) {
     return NextResponse.json(
@@ -594,6 +604,23 @@ async function createGroupBooking(body: unknown) {
     }
   }
 
+  // Org-Einstellungen (Name für die E-Mail + Mehrfachbuchungs-Schalter).
+  const { data: orgRow } = await client
+    .from('organizations')
+    .select('name, settings')
+    .eq('id', finalOrganizationId)
+    .single() as any
+
+  // Schalter "Mehrfachbuchung erlauben": ein direkter Public-POST darf den in der
+  // Buchungsseite versteckten Mehrfach-Flow nicht umgehen. Eingeloggte Mitarbeiter
+  // (Dashboard) sind ausgenommen.
+  if (!user && !getAllowMultiBooking(orgRow?.settings)) {
+    return NextResponse.json(
+      { error: 'Mehrfachbuchung ist für diesen Anbieter nicht verfügbar.', code: 'MULTI_DISABLED' },
+      { status: 400 }
+    )
+  }
+
   // Alle referenzierten Offerings (Hauptservices + Zusatzleistungen) laden.
   const allOfferingIds = Array.from(
     new Set(items.flatMap((it) => [it.offeringId, ...(it.addonIds || [])]))
@@ -627,7 +654,7 @@ async function createGroupBooking(body: unknown) {
       offeringId: main.id,
       offeringName: main.name,
       duration,
-      endTime: new Date(new Date(startTime).getTime() + duration * 60000).toISOString(),
+      requestedStaffId: it.resourceId ?? null, // Wunsch-Mitarbeiter (parallel, je Position)
       addons,
     })
   }
@@ -642,7 +669,14 @@ async function createGroupBooking(body: unknown) {
 
   if (staffErr) throw staffErr
   const staff = activeStaff || []
-  if (staff.length < preparedItems.length) {
+  // Parallel braucht je Position einen eigenen Mitarbeiter; sequenziell reicht einer.
+  if (!isSequential && staff.length < preparedItems.length) {
+    return NextResponse.json(
+      { error: 'Nicht genügend Mitarbeiter für diese Buchung verfügbar.', code: 'SLOT_TAKEN' },
+      { status: 409 }
+    )
+  }
+  if (staff.length === 0) {
     return NextResponse.json(
       { error: 'Nicht genügend Mitarbeiter für diese Buchung verfügbar.', code: 'SLOT_TAKEN' },
       { status: 409 }
@@ -650,6 +684,7 @@ async function createGroupBooking(body: unknown) {
   }
 
   const staffIds: string[] = staff.map((s: any) => s.id)
+  const staffIdSet = new Set(staffIds)
   const startDay = new Date(startTime); startDay.setHours(0, 0, 0, 0)
   const endDay = new Date(startTime); endDay.setHours(23, 59, 59, 999)
 
@@ -670,15 +705,14 @@ async function createGroupBooking(body: unknown) {
     .lte('start_time', endDay.toISOString())
     .gte('end_time', startDay.toISOString()) as any
 
-  const slotStart = new Date(startTime)
-  const isFree = (staffId: string, itemEndIso: string) => {
-    const itemEnd = new Date(itemEndIso)
+  // Ist ein Mitarbeiter im Intervall [s, e] frei (Buchungen + Blocks)?
+  const intervalFree = (staffId: string, s: Date, e: Date) => {
     for (const b of dayBookings || []) {
       if (b.resource_id !== staffId) continue
-      if (slotStart < new Date(b.end_time) && itemEnd > new Date(b.start_time)) return false
+      if (s < new Date(b.end_time) && e > new Date(b.start_time)) return false
     }
     for (const bl of blocks || []) {
-      if (blockBlocksSlot(bl, slotStart, itemEnd, staffId)) return false
+      if (blockBlocksSlot(bl, s, e, staffId)) return false
     }
     return true
   }
@@ -691,26 +725,83 @@ async function createGroupBooking(body: unknown) {
     }
   })
 
-  // Längste Positionen zuerst; je Position freien, noch nicht benutzten
-  // Mitarbeiter mit geringster Auslastung wählen.
-  const order = preparedItems
-    .map((item, idx) => ({ item, idx }))
-    .sort((a, b) => b.item.duration - a.item.duration)
+  const baseStart = new Date(startTime)
 
-  const used = new Set<string>()
+  // Pro Position: Startzeit/Endzeit (sequenziell back-to-back, sonst gleichzeitig)
+  // und der zugewiesene Mitarbeiter.
+  const scheduled: { start: Date; end: Date }[] = []
   const assignment: (string | null)[] = new Array(preparedItems.length).fill(null)
-  for (const { item, idx } of order) {
-    const candidate = staffIds
-      .filter((id) => !used.has(id) && isFree(id, item.endTime))
-      .sort((a, b) => (loadByStaff.get(a) || 0) - (loadByStaff.get(b) || 0))[0]
-    if (!candidate) {
+  const autoAssigned: boolean[] = new Array(preparedItems.length).fill(true)
+
+  if (isSequential) {
+    // Alle Leistungen nacheinander beim selben Mitarbeiter.
+    let cursor = baseStart
+    for (const item of preparedItems) {
+      const end = new Date(cursor.getTime() + item.duration * 60000)
+      scheduled.push({ start: cursor, end })
+      cursor = end
+    }
+    const staffFreeWholeBlock = (id: string) =>
+      scheduled.every((s) => intervalFree(id, s.start, s.end))
+
+    let chosen: string | null = null
+    if (sequentialResourceId) {
+      if (!staffIdSet.has(sequentialResourceId)) {
+        return NextResponse.json({ error: 'Mitarbeiter nicht gefunden' }, { status: 404 })
+      }
+      if (!staffFreeWholeBlock(sequentialResourceId)) {
+        return NextResponse.json(
+          { error: 'Dieser Termin ist leider nicht mehr verfügbar.', code: 'SLOT_TAKEN' },
+          { status: 409 }
+        )
+      }
+      chosen = sequentialResourceId
+    } else {
+      chosen = staffIds
+        .filter(staffFreeWholeBlock)
+        .sort((a, b) => (loadByStaff.get(a) || 0) - (loadByStaff.get(b) || 0))[0] || null
+      if (!chosen) {
+        return NextResponse.json(
+          { error: 'Dieser Termin ist leider nicht mehr verfügbar.', code: 'SLOT_TAKEN' },
+          { status: 409 }
+        )
+      }
+    }
+    preparedItems.forEach((_, idx) => {
+      assignment[idx] = chosen
+      autoAssigned[idx] = !sequentialResourceId
+    })
+  } else {
+    // Parallel: alle gleichzeitig, distinkte Mitarbeiter; Wunsch-Mitarbeiter je
+    // Position werden respektiert (bipartites Matching, Rest least-loaded zuerst).
+    for (const item of preparedItems) {
+      scheduled.push({ start: baseStart, end: new Date(baseStart.getTime() + item.duration * 60000) })
+    }
+    for (const item of preparedItems) {
+      if (item.requestedStaffId && !staffIdSet.has(item.requestedStaffId)) {
+        return NextResponse.json({ error: 'Mitarbeiter nicht gefunden' }, { status: 404 })
+      }
+    }
+    const orderedStaff = [...staffIds].sort(
+      (a, b) => (loadByStaff.get(a) || 0) - (loadByStaff.get(b) || 0)
+    )
+    const positions = preparedItems.map((item) => ({
+      duration: item.duration,
+      fixedStaffId: item.requestedStaffId,
+    }))
+    const isFreeForDuration = (id: string, duration: number) =>
+      intervalFree(id, baseStart, new Date(baseStart.getTime() + duration * 60000))
+    const result = assignStaffToPositions(positions, orderedStaff, isFreeForDuration)
+    if (!result) {
       return NextResponse.json(
         { error: 'Dieser Termin ist leider nicht mehr verfügbar.', code: 'SLOT_TAKEN' },
         { status: 409 }
       )
     }
-    used.add(candidate)
-    assignment[idx] = candidate
+    result.forEach((id, idx) => {
+      assignment[idx] = id
+      autoAssigned[idx] = !preparedItems[idx].requestedStaffId
+    })
   }
 
   const groupId = randomUUID()
@@ -728,15 +819,16 @@ async function createGroupBooking(body: unknown) {
     customer_name: customerName,
     customer_email: normalizedCustomerEmail,
     customer_phone: customerPhone || null,
-    start_time: startTime,
-    end_time: item.endTime,
+    start_time: scheduled[idx].start.toISOString(),
+    end_time: scheduled[idx].end.toISOString(),
     notes: notes || null,
     status: 'pending',
     manage_token: idx === 0 ? primaryToken : generateManageToken(),
     group_id: groupId,
     metadata: {
       staffAssigned: true,
-      autoAssigned: true,
+      autoAssigned: autoAssigned[idx],
+      bookingMode: mode,
       groupId,
       addons: item.addons,
       privacyNoticeAccepted: !user ? true : undefined,
@@ -763,16 +855,11 @@ async function createGroupBooking(body: unknown) {
 
   const manageUrl = buildManageUrl(primaryToken)
 
-  const { data: orgRow } = await client
-    .from('organizations')
-    .select('name')
-    .eq('id', finalOrganizationId)
-    .single() as any
-
-  const maxEnd = preparedItems.reduce(
-    (acc: string, it: any) => (new Date(it.endTime) > new Date(acc) ? it.endTime : acc),
-    preparedItems[0].endTime
-  )
+  // Gesamtende = spätestes Positionsende (bei sequenziell das letzte, bei parallel
+  // das längste).
+  const maxEnd = scheduled
+    .reduce((acc, s) => (s.end > acc ? s.end : acc), scheduled[0].end)
+    .toISOString()
 
   const delivery = await sendBookingConfirmation({
     customerName,

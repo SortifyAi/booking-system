@@ -13,6 +13,126 @@ export interface CalendarStaffColumn extends CalendarStaffMember {
   compactLabel: string;
 }
 
+export interface CalendarOpeningHours {
+  day: number;
+  open: string;
+  close: string;
+  closed?: boolean;
+}
+
+export interface CalendarTimeRange {
+  startMinute: number;
+  endMinute: number;
+}
+
+export interface CalendarTimeSlot {
+  minuteOfDay: number;
+  hour: number;
+  minute: number;
+  label: string;
+}
+
+interface CalendarBlockWithStaff {
+  resource_id?: string | null;
+  staff_id?: string | null;
+}
+
+const DEFAULT_CALENDAR_TIME_RANGE: CalendarTimeRange = {
+  startMinute: 7 * 60,
+  endMinute: 20 * 60,
+};
+
+const parseTime = (value: string) => {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)/.exec(value);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+};
+
+const getOpeningHourRanges = (openingHours: CalendarOpeningHours[]) => {
+  return openingHours.flatMap((hours) => {
+    if (hours.closed) return [];
+    const open = parseTime(hours.open);
+    const close = parseTime(hours.close);
+    if (open == null || close == null || close <= open) return [];
+    return [{ ...hours, openMinute: open, closeMinute: close }];
+  });
+};
+
+const getEnvelope = (
+  ranges: Array<{ openMinute: number; closeMinute: number }>,
+): CalendarTimeRange | null => {
+  if (ranges.length === 0) return null;
+  const startMinute = Math.floor(
+    Math.min(...ranges.map((hours) => hours.openMinute)) / 30,
+  ) * 30;
+  const endMinute = Math.ceil(
+    Math.max(...ranges.map((hours) => hours.closeMinute)) / 30,
+  ) * 30;
+  return endMinute > startMinute ? { startMinute, endMinute } : null;
+};
+
+export function getCalendarTimeRange(
+  openingHours: CalendarOpeningHours[],
+  visibleDays: Date[],
+  fallback: CalendarTimeRange = DEFAULT_CALENDAR_TIME_RANGE,
+): CalendarTimeRange {
+  const configuredRanges = getOpeningHourRanges(openingHours);
+  if (configuredRanges.length === 0) return fallback;
+
+  const visibleDayNumbers = new Set(visibleDays.map((day) => day.getDay()));
+  const visibleRanges = configuredRanges.filter((hours) =>
+    visibleDayNumbers.has(hours.day),
+  );
+
+  return getEnvelope(visibleRanges)
+    || getEnvelope(configuredRanges)
+    || fallback;
+}
+
+export function getCalendarTimeSlots(
+  startMinute: number,
+  endMinute: number,
+  slotMinutes = 30,
+): CalendarTimeSlot[] {
+  if (slotMinutes <= 0 || endMinute <= startMinute) return [];
+
+  return Array.from(
+    { length: Math.ceil((endMinute - startMinute) / slotMinutes) },
+    (_, index) => startMinute + index * slotMinutes,
+  )
+    .filter((minuteOfDay) => minuteOfDay < endMinute)
+    .map((minuteOfDay) => {
+      const hour = Math.floor(minuteOfDay / 60);
+      const minute = minuteOfDay % 60;
+      return {
+        minuteOfDay,
+        hour,
+        minute,
+        label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+      };
+    });
+}
+
+export function filterCalendarBlocksForColumn<T extends CalendarBlockWithStaff>(
+  blocks: T[],
+  options: {
+    selectedStaff: string;
+    staffId?: string;
+    hidePersonalBlocksInAggregateWeek?: boolean;
+  },
+): T[] {
+  const { selectedStaff, staffId, hidePersonalBlocksInAggregateWeek = false } = options;
+
+  return blocks.filter((block) => {
+    const blockStaffId = block.resource_id || block.staff_id || '';
+    if (!blockStaffId) return true;
+    if (hidePersonalBlocksInAggregateWeek && selectedStaff === 'all') return false;
+    if (staffId != null) return blockStaffId === staffId;
+    if (selectedStaff !== 'all') return blockStaffId === selectedStaff;
+    return true;
+  });
+}
+
 export function getCompactStaffLabel(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
 

@@ -20,7 +20,9 @@ import {
   layoutOverlappingBookings,
 } from '@/lib/calendar-layout';
 import {
+  filterCalendarBlocksForColumn,
   getCalendarStaffColumns,
+  getCalendarTimeSlots,
   getResponsiveWeekDayCount,
   getVisibleWeekDays,
   type CalendarStaffColumn,
@@ -62,11 +64,11 @@ interface WeekCalendarProps {
   currentDate: Date;
   bookings: Booking[];
   blocks?: Block[];
-  startHour?: number;
-  endHour?: number;
+  startMinute?: number;
+  endMinute?: number;
   selectedStaff?: string;
   staffMembers?: Staff[];
-  onTimeSlotClick?: (date: Date, hour: number, staffId?: string) => void;
+  onTimeSlotClick?: (date: Date, hour: number, minute: number, staffId?: string) => void;
   onBookingMove?: (
     bookingId: string,
     newStart: Date,
@@ -87,8 +89,8 @@ export function WeekCalendar({
   currentDate,
   bookings,
   blocks = [],
-  startHour = 7,
-  endHour = 20,
+  startMinute = 7 * 60,
+  endMinute = 20 * 60,
   selectedStaff = 'all',
   staffMembers = [],
   onTimeSlotClick,
@@ -99,19 +101,20 @@ export function WeekCalendar({
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
+  const timeSlots = getCalendarTimeSlots(startMinute, endMinute);
   const [visibleDaysCount, setVisibleDaysCount] = useState(7);
-  const slotHeight = visibleDaysCount === 1 ? 64 : 72;
-  const bodyHeight = (endHour - startHour) * slotHeight;
-  const slotHeightRef = useRef(slotHeight);
-  slotHeightRef.current = slotHeight;
+  const pixelsPerHour = visibleDaysCount === 1 ? 64 : 72;
+  const slotHeight = pixelsPerHour / 2;
+  const bodyHeight = ((endMinute - startMinute) / 60) * pixelsPerHour;
+  const pixelsPerHourRef = useRef(pixelsPerHour);
+  pixelsPerHourRef.current = pixelsPerHour;
 
   const resolvePoint = (clientX: number, clientY: number) => {
     const element = document.elementFromPoint(clientX, clientY);
     const column = element?.closest('[data-cal-column]') as HTMLElement | null;
     if (!column?.dataset.calColumn) return null;
     const rect = column.getBoundingClientRect();
-    const pointerMinutes = ((clientY - rect.top) / slotHeightRef.current) * 60;
+    const pointerMinutes = ((clientY - rect.top) / pixelsPerHourRef.current) * 60;
     return { columnKey: column.dataset.calColumn, pointerMinutes };
   };
 
@@ -122,7 +125,8 @@ export function WeekCalendar({
     const durationMs = new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime();
     const [dateKey, targetStaffId = ''] = target.columnKey.split('::');
     const [year, month, day] = dateKey.split('-').map(Number);
-    const newStart = new Date(year, month - 1, day, startHour, 0, 0, 0);
+    const newStart = new Date(year, month - 1, day, 0, 0, 0, 0);
+    newStart.setMinutes(startMinute);
     newStart.setMinutes(newStart.getMinutes() + target.minutesFromStart);
     const newEnd = new Date(newStart.getTime() + durationMs);
     const currentStaffId = booking.staff_id || booking.resource_id || '';
@@ -133,7 +137,8 @@ export function WeekCalendar({
   };
 
   const { dragState, startDrag, draggingId } = useCalendarDrag({
-    dayMinutes: (endHour - startHour) * 60,
+    dayMinutes: endMinute - startMinute,
+    snapMinutes: 30,
     resolvePoint,
     onCommit: handleCommit,
     onClick: (id) => onBookingClick?.(id),
@@ -191,12 +196,18 @@ export function WeekCalendar({
   };
 
   const getBlocksForStaffColumn = (day: Date, column: CalendarStaffColumn) => {
-    return getBlocksForDay(day).filter((block) => {
-      const blockStaffId = block.resource_id || block.staff_id;
-      if (!blockStaffId) return column.kind !== 'unassigned';
-      return column.kind === 'staff' && blockStaffId === column.id;
+    if (column.kind === 'unassigned') return [];
+    return filterCalendarBlocksForColumn(getBlocksForDay(day), {
+      selectedStaff,
+      staffId: column.kind === 'staff' ? column.id : undefined,
     });
   };
+
+  const getBlocksForAggregateDay = (day: Date) =>
+    filterCalendarBlocksForColumn(getBlocksForDay(day), {
+      selectedStaff,
+      hidePersonalBlocksInAggregateWeek: selectedStaff === 'all',
+    });
 
   const calendarColumns = isStaffCapacityMode
     ? staffColumns.map((staff) => ({
@@ -227,10 +238,17 @@ export function WeekCalendar({
   });
   const gridTemplateColumns = `${timeColumnWidth}px ${calendarColumnWidths.map((width) => `minmax(${width}px, 1fr)`).join(' ')}`;
 
-  const handleSlotClick = (day: Date, hour: number, staffId?: string) => {
+  const handleSlotClick = (day: Date, hour: number, minute: number, staffId?: string) => {
     if (onTimeSlotClick) {
-      onTimeSlotClick(day, hour, staffId);
+      onTimeSlotClick(day, hour, minute, staffId);
     }
+  };
+
+  const formatMinuteOfDay = (minuteOfDay: number) => {
+    const normalizedMinute = Math.max(0, minuteOfDay);
+    const hour = Math.floor(normalizedMinute / 60);
+    const minute = normalizedMinute % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   };
 
   return (
@@ -311,14 +329,18 @@ export function WeekCalendar({
         <div className="grid divide-x divide-gray-200 dark:divide-slate-800" style={{ gridTemplateColumns }}>
           {/* Time labels column */}
           <div className="sticky left-0 z-10 border-r border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            {hours.map((hour) => (
+            {timeSlots.map((slot) => (
               <div
-                key={hour}
-                className="relative border-b border-gray-100 px-1 py-2 text-right dark:border-slate-800 sm:px-2"
+                key={slot.minuteOfDay}
+                className={`relative border-b px-1 py-1 text-right sm:px-2 ${
+                  slot.minute === 0
+                    ? 'border-gray-200 dark:border-slate-700'
+                    : 'border-gray-100 dark:border-slate-800'
+                }`}
                 style={{ height: `${slotHeight}px` }}
               >
                 <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400 sm:text-xs">
-                  {String(hour).padStart(2, '0')}:00
+                  {slot.label}
                 </p>
               </div>
             ))}
@@ -330,7 +352,7 @@ export function WeekCalendar({
               : getBookingsForDay(column.day);
             const columnBlocks = column.staff
               ? getBlocksForStaffColumn(column.day, column.staff)
-              : getBlocksForDay(column.day);
+              : getBlocksForAggregateDay(column.day);
             const layout = layoutOverlappingBookings(columnBookings);
             const isDropTarget = dragState?.target?.columnKey === column.key;
             const slotStaffId = column.staff?.kind === 'staff' ? column.staff.id : undefined;
@@ -342,14 +364,25 @@ export function WeekCalendar({
                 className="relative min-w-0 bg-white dark:bg-slate-900"
                 style={{ height: `${bodyHeight}px` }}
               >
-                {hours.map((hour) => (
+                {timeSlots.map((slot) => (
                   <button
-                    key={`${column.key}-${hour}`}
+                    key={`${column.key}-${slot.minuteOfDay}`}
                     type="button"
-                    className="block w-full cursor-pointer border-b border-gray-100 text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:border-slate-800 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600"
+                    className={`block w-full cursor-pointer border-b text-left transition-colors hover:bg-blue-50 hover:ring-2 hover:ring-inset hover:ring-blue-300 dark:hover:bg-blue-500/10 dark:hover:ring-blue-600 ${
+                      slot.minute === 0
+                        ? 'border-gray-200 dark:border-slate-700'
+                        : 'border-gray-100 dark:border-slate-800'
+                    }`}
                     style={{ height: `${slotHeight}px` }}
-                    onClick={() => handleSlotClick(column.day, hour, slotStaffId)}
-                    title={`Termin um ${String(hour).padStart(2, '0')}:00 erstellen${column.staff ? ` · ${column.staff.name}` : ''}`}
+                    onClick={() =>
+                      handleSlotClick(
+                        column.day,
+                        slot.hour,
+                        slot.minute,
+                        slotStaffId,
+                      )
+                    }
+                    title={`Termin um ${slot.label} erstellen${column.staff ? ` · ${column.staff.name}` : ''}`}
                   />
                 ))}
 
@@ -357,9 +390,9 @@ export function WeekCalendar({
                   const style = getBlockStyleForDay(
                     block,
                     column.day,
-                    startHour,
-                    endHour,
-                    slotHeight,
+                    startMinute,
+                    endMinute,
+                    pixelsPerHour,
                   );
                   if (!style) return null;
                   const label = block.reason || blockTypeLabels[block.type] || 'Blockiert';
@@ -394,13 +427,11 @@ export function WeekCalendar({
                   <div
                     className="pointer-events-none absolute inset-x-0.5 z-20 flex items-start rounded-md border-2 border-dashed border-blue-500 bg-blue-500/20 px-1 py-1 text-[9px] font-semibold text-blue-700 dark:text-blue-200 sm:text-[10px]"
                     style={{
-                      top: `${(dragState.target.minutesFromStart / 60) * slotHeight + 6}px`,
-                      height: `${Math.max(40, (dragState.durationMinutes / 60) * slotHeight - 10)}px`,
+                      top: `${(dragState.target.minutesFromStart / 60) * pixelsPerHour + 6}px`,
+                      height: `${Math.max(40, (dragState.durationMinutes / 60) * pixelsPerHour - 10)}px`,
                     }}
                   >
-                    {String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}
-                    :
-                    {String(dragState.target.minutesFromStart % 60).padStart(2, '0')}
+                    {formatMinuteOfDay(startMinute + dragState.target.minutesFromStart)}
                   </div>
                 )}
 
@@ -416,14 +447,16 @@ export function WeekCalendar({
                   const left = `calc(${position.column} * (((100% - ${(position.columns - 1) * gap}px) / ${position.columns}) + ${gap}px))`;
                   const timeStyle = getBookingTimeStyle(
                     booking,
-                    startHour,
-                    slotHeight,
+                    startMinute,
+                    pixelsPerHour,
                     isCompactAllStaffMode ? 34 : 40,
                   );
                   const isCompactBooking = position.columns >= 3 || timeStyle.height < 52;
                   const bookingStart = new Date(booking.start_time);
                   const bookingTime = format(bookingStart, 'HH:mm');
-                  const startMinutes = (bookingStart.getHours() - startHour) * 60 + bookingStart.getMinutes();
+                  const startMinutes = bookingStart.getHours() * 60
+                    + bookingStart.getMinutes()
+                    - startMinute;
                   const durationMinutes = Math.max(
                     15,
                     (new Date(booking.end_time).getTime() - bookingStart.getTime()) / 60000,
@@ -498,7 +531,7 @@ export function WeekCalendar({
           style={{ left: dragState.pointerX, top: dragState.pointerY }}
         >
           {dragState.target
-            ? `${String(startHour + Math.floor(dragState.target.minutesFromStart / 60)).padStart(2, '0')}:${String(dragState.target.minutesFromStart % 60).padStart(2, '0')}`
+            ? formatMinuteOfDay(startMinute + dragState.target.minutesFromStart)
             : dragState.title}
         </div>
       )}

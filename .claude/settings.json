@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/pascal/dev/bookanord/landing-page && grep -rn \"hallo@bookanord\\\\|bookanord.de\\\\b\" app lib components --include=\"*.tsx\" --include=\"*.ts\" --include=\"*.mjs\" 2>/dev/null | grep -i \"mailto\\\\|hallo\\\\|@bookanord\\\\|email\\\\|e-mail\" | grep -iv \"app.bookanord\\\\|//bookanord\\\\|url:\" | head)",
+      "Read(//Users/pascal/dev/bookanord/landing-page/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/pascal/dev/bookanord/landing-page/app"
+    ]
+  }
+}

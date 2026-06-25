@@ -28,6 +28,17 @@ export const mockLocations = [
     phone: '+49 30 1234567',
     timezone: 'Europe/Berlin',
     organization_id: 'org-1',
+    settings: {
+      openingHours: [
+        { day: 1, open: '09:00', close: '18:00', closed: false },
+        { day: 2, open: '09:00', close: '18:00', closed: false },
+        { day: 3, open: '09:00', close: '18:00', closed: false },
+        { day: 4, open: '09:00', close: '18:00', closed: false },
+        { day: 5, open: '09:00', close: '18:00', closed: false },
+        { day: 6, open: '10:00', close: '14:00', closed: false },
+        { day: 0, open: '', close: '', closed: true },
+      ],
+    },
     created_at: addDays(now, -90).toISOString(),
   },
   {
@@ -37,6 +48,17 @@ export const mockLocations = [
     phone: '+49 40 1234567',
     timezone: 'Europe/Berlin',
     organization_id: 'org-1',
+    settings: {
+      openingHours: [
+        { day: 1, open: '09:00', close: '18:00', closed: false },
+        { day: 2, open: '09:00', close: '18:00', closed: false },
+        { day: 3, open: '09:00', close: '18:00', closed: false },
+        { day: 4, open: '09:00', close: '18:00', closed: false },
+        { day: 5, open: '09:00', close: '18:00', closed: false },
+        { day: 6, open: '10:00', close: '14:00', closed: false },
+        { day: 0, open: '', close: '', closed: true },
+      ],
+    },
     created_at: addDays(now, -70).toISOString(),
   },
   {
@@ -46,6 +68,17 @@ export const mockLocations = [
     phone: '+49 89 1234567',
     timezone: 'Europe/Berlin',
     organization_id: 'org-1',
+    settings: {
+      openingHours: [
+        { day: 1, open: '09:00', close: '18:00', closed: false },
+        { day: 2, open: '09:00', close: '18:00', closed: false },
+        { day: 3, open: '09:00', close: '18:00', closed: false },
+        { day: 4, open: '09:00', close: '18:00', closed: false },
+        { day: 5, open: '09:00', close: '18:00', closed: false },
+        { day: 6, open: '10:00', close: '14:00', closed: false },
+        { day: 0, open: '', close: '', closed: true },
+      ],
+    },
     created_at: addDays(now, -60).toISOString(),
   },
 ]
