@@ -1099,7 +1099,7 @@ export default function CalendarPage() {
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             {!isEditingBooking ? (
               <>
                 {detailBooking && !['cancelled', 'completed', 'no_show'].includes(detailBooking.status) && (
@@ -1454,7 +1454,7 @@ export default function CalendarPage() {
           </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsModalOpen(false)}>
               Abbrechen
             </Button>
@@ -1515,7 +1515,7 @@ export default function CalendarPage() {
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button
               variant="outline"
               className="w-full gap-2 text-red-600 hover:text-red-700 dark:text-red-400 sm:w-auto"
